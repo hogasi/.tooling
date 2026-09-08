@@ -11,14 +11,14 @@
     "format": "prettier --write .",
     "check": "pnpm lint && fallow && fallow security --fail-on-issues && node --test",
     "precommit": "gitleaks git --staged --no-banner --redact && lint-staged && pnpm check",
-    "release": "changeset publish",
+    "bump": "pnpm -r exec npm version --no-git-tag-version",
+    "release": "pnpm -r publish --access public --no-git-checks",
     "prepare": "husky"
   },
   "lint-staged": {
     "*": "prettier --write --ignore-unknown"
   },
   "devDependencies": {
-    "@changesets/cli": "^3.0.2",
     "@hogasi/eslint-config": "workspace:*",
     "@hogasi/fallow-config": "workspace:*",
     "@hogasi/prettier-config": "workspace:*",

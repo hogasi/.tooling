@@ -179,43 +179,31 @@ prerequisites, or automerge silently does nothing useful: the repo needs **Allow
 auto-merge** turned on, and it needs required status checks, since merging
 automatically before any check is required merges without a gate.
 
-## Versioning
+## Releasing
 
-Consumers pin `@v1`. Every release force-moves that tag. A breaking process
-change becomes `v2`, and repos opt in one at a time.
-
-Packages share a single version (changesets `fixed`). Add a changeset with
-`pnpm changeset`; merging the release PR publishes and retags.
-
-## Publishing
-
-CI calls `release.yml` only for pushes to `main`, after Build & tests, Workflow
-lint, Secret scan and Renovate config succeed for that commit. Dependency audit
-stays advisory. Release has no independent push trigger, so publication is gated
-even before repositories configure required merge checks.
-
-The first publish of a package is manual, because npm trusted publishing can
-only be configured on a package that already exists:
+All five packages share one version. To release:
 
 ```sh
-pnpm --filter @hogasi/tsconfig publish --access public
+pnpm bump 0.3.0   # or minor / patch
 ```
 
-Then add a trusted publisher on npmjs.com pointing at `release.yml` in this
-repo. Every later release publishes over OIDC, with no npm token stored
-anywhere.
+Commit that and push to `main`. CI publishes anything whose version is not yet
+on npm and force-moves the `v1` tag that consumers pin. Pushes that bump nothing
+publish nothing, so the job is safe to run on every one of them.
 
-Releases are two runs, and you review neither. A push to `main` carrying
-changesets opens a `chore: release` PR holding the version bumps and CHANGELOGs;
-release.yml merges it immediately, and the resulting push runs CI again and
-publishes. The version bump has to land on `main` either way, or the repo drifts
-from the registry and the next release computes from stale numbers.
+Publishing stores no credential. Each package has a **trusted publisher** on
+npmjs.com pointing at `self-ci.yml` in this repo, and CI trades a GitHub OIDC
+token for a short-lived npm one at publish time. The alternative — a granular
+token with "bypass 2FA" — is a long-lived secret that can write the whole
+`@hogasi` scope, and npm warns against it for CI for that reason.
 
-That merge needs `RELEASE_PAT`, a repository secret holding a fine-grained token
-with **contents: read and write** and **pull requests: read and write** on this
-repo. It is not an npm credential: a merge made with the default `GITHUB_TOKEN`
-does not start a new workflow run, so the publish would never fire. It is the
-one stored secret in the pipeline, and it needs rotating when it expires.
+The release job runs only for pushes to `main`, and only after Build & tests,
+Workflow lint, Secret scan and Renovate config pass for that commit. Dependency
+audit stays advisory. It has no independent trigger, so nothing publishes
+without those four gates.
+
+A breaking change to the shared contract becomes `v2`, and repos opt in one at a
+time.
 
 ## Org settings
 

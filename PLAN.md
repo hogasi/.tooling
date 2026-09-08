@@ -10,8 +10,8 @@ environment. Its consumer tests run the packed package, including plain
 `vitest run`, DOM access, reporting with no threshold, and strict TypeScript
 compilation.
 
-`self-ci.yml` calls `release.yml` after all four blocking checks succeed for the
-same main-push commit. The dependency audit remains advisory. Release has no
+`self-ci.yml` runs its release job after all four blocking checks succeed for
+the same main-push commit. The dependency audit remains advisory. Release has no
 independent push trigger, and main CI runs are not cancelled by later pushes.
 Org-wide required merge checks remain a rollout task; publishing is already
 gated without them.
@@ -36,16 +36,13 @@ freed the name.
      creators**, then list these patterns:
      ```
      anthropics/claude-code-action@*
-     changesets/action@*
      hogasi/*
      pnpm/action-setup@*
      raven-actions/actionlint@*
      ```
    - _Workflow permissions_: **Read repository contents and packages
-     permissions**, and tick **Allow GitHub Actions to create and approve pull
-     requests**. The tick box is required — without it `changesets/action` gets
-     a 403 and the release PR is never opened. See the note below on why this
-     grants nothing extra today.
+     permissions**. Nothing needs the create-and-approve-pull-requests tick box:
+     the release job publishes straight from a push to `main` and opens no PR.
 
    **Settings → Repository → Rulesets → New ruleset** — name it
    `main: PR required, no force-push, no deletion`, enforcement **Active**,
@@ -61,16 +58,13 @@ freed the name.
    ```sh
    gh api repos/hogasi/.tooling/actions/permissions/workflow
    gh api -X PUT repos/hogasi/.tooling/actions/permissions/workflow \
-     -F default_workflow_permissions=read \
-     -F can_approve_pull_request_reviews=true
+     -F default_workflow_permissions=read
    ```
 
-2. **Add the `RELEASE_PAT` repository secret.** Settings → Secrets and variables
-   → Actions. A fine-grained token scoped to this repo with **contents: read and
-   write** and **pull requests: read and write**. It merges the `chore: release`
-   PR; a merge made with `GITHUB_TOKEN` starts no new workflow run, so the
-   publish would never fire. Without it the release PR is opened and then sits
-   there.
+2. **Add a trusted publisher to each of the five packages.** npmjs.com → the
+   package → Settings → Trusted Publisher: repository `hogasi/.tooling`,
+   workflow `self-ci.yml`. npm matches the OIDC claim against the workflow file
+   that actually ran, so this must name the caller, not any workflow it calls.
 
 3. **Log in to npm and claim the scope.** The scope cannot be renamed later, so
    do this before any `package.json` is written. There is no CLI for creating an
@@ -97,13 +91,13 @@ freed the name.
 
 ### Stage 0 scaffold — built
 
-Workspace, changesets, `@hogasi/tsconfig`, `@hogasi/prettier-config`,
+Workspace, `@hogasi/tsconfig`, `@hogasi/prettier-config`,
 `@hogasi/eslint-config`, `@hogasi/vitest-config`, `@hogasi/fallow-config`,
-`renovate/default.json`, `self-ci.yml` and `release.yml` are in the tree.
-`actions/setup`, `ci-node.yml` and `renovate-failed.yml` were built and then
-removed — see "Reusable CI removed until there is a second repo" below.
-`pnpm lint` and `pnpm check` pass locally. Nothing is committed yet, and the
-first `npm publish` still waits on the npm org above.
+`renovate/default.json` and `self-ci.yml` are in the tree. `actions/setup`,
+`ci-node.yml` and `renovate-failed.yml` were built and then removed — see
+"Reusable CI removed until there is a second repo" below. `pnpm lint` and
+`pnpm check` pass locally. Nothing is committed yet, and the first `npm publish`
+still waits on the npm org above.
 
 The two lint packages, the Renovate preset and the shape of the tsconfig base
 were all pulled forward from Stage 1. The plan wanted them derived from two
@@ -124,22 +118,20 @@ Three deviations from the sketch above, each deliberate:
   input nor a file. A hardcoded default in the shared action would silently
   drift from the version each repo actually develops against.
 - **No `NPM_TOKEN`.** Releases publish over npm trusted publishing (OIDC), so no
-  long-lived registry credential exists anywhere. The cost is that the very
-  first publish of each package must be manual, because a trusted publisher can
-  only be attached to a package that already exists on the registry. `README.md`
-  has the command. Note that `changeset publish` shells out to `pnpm publish` in
-  a pnpm workspace, so this rides on pnpm's OIDC support, not npm's — confirm it
-  on the first automated release rather than assuming it.
-
-One org setting had to be loosened to make this work:
-
-- **`can_approve_pull_request_reviews` is now `true`** in the org Actions
-  settings. That field is the API side of "Allow GitHub Actions to create and
-  approve pull requests", and it gates _creation_ as well as approval. With it
-  off, `changesets/action` gets a 403 the first time a changeset lands and the
-  release pipeline silently never fires. It grants nothing extra today because
-  required approvals is 0 — but if that count ever rises, an Actions-approved PR
-  would satisfy it, so revisit this line at the same time.
+  long-lived registry credential exists anywhere. A granular token with "bypass
+  2FA" would be simpler to set up and is what npm explicitly warns against for
+  CI: it can write the whole `@hogasi` scope and never expires until it does.
+  The first publish of each package is still manual, because a trusted publisher
+  can only attach to a package that already exists. This failed on the first
+  attempt for two reasons now removed: `release.yml` was a reusable workflow, so
+  npm saw a different workflow file in the claim than the one configured, and
+  `changeset publish` captured pnpm's output, so the `Skipped OIDC` warning
+  never reached the log and the only visible symptom was an anonymous `E404`.
+- **No changesets.** Versions are bumped by hand with `pnpm bump`, and
+  `pnpm -r publish` skips whatever is already on the registry. Changesets bought
+  generated changelogs and a release PR, and charged a bot PR, a merge that
+  needed a PAT because `GITHUB_TOKEN` merges start no workflow run, and two CI
+  runs per release. Not worth it for five config packages released rarely.
 
 ### CI hardening pulled forward from sil
 
@@ -171,15 +163,6 @@ One org setting had to be loosened to make this work:
 - **Action pins moved to `actions/checkout@v7`, `actions/setup-node@v7` and
   `pnpm/action-setup@v6.1.0`.** The last one matters most: pnpm 11 support
   landed in `action-setup` v6, and this workspace is on pnpm 11.
-- **`changesets/action` is pinned to `v2.1.2`.** The earlier `@v1` resolved to
-  nothing at all — that repository publishes no moving major tags. Bumping to v2
-  also means renaming every input: `version` became `version-script`, `publish`
-  became `publish-script`, `title` became `pr-title`, `commit` became
-  `commit-message`, and the `GITHUB_TOKEN` env var became a `github-token`
-  input. Unknown inputs are ignored rather than rejected, so the first release
-  would have opened a pull request titled "Version Packages" and published
-  nothing, with no error anywhere. `actionlint` does not check third-party
-  action inputs; the editor's GitHub Actions extension is what caught it.
 
 ### This repo lints itself
 
@@ -311,11 +294,11 @@ called them, so nothing tested them, and a reusable workflow that has never been
 consumed is a guess about its own interface. Their design and the reasoning
 behind it stay in this document, which is the point of writing it down.
 
-`self-ci.yml` and `release.yml` remain. The three jobs that used
-`./actions/setup` now run its four steps inline, and the composite's hand-rolled
-`.nvmrc` parsing collapses into `actions/setup-node`'s own `node-version-file`.
-That is a straight simplification, and it is worth noting that the composite was
-never needed to read `.nvmrc` in the first place.
+`self-ci.yml` remains. The three jobs that used `./actions/setup` now run its
+four steps inline, and the composite's hand-rolled `.nvmrc` parsing collapses
+into `actions/setup-node`'s own `node-version-file`. That is a straight
+simplification, and it is worth noting that the composite was never needed to
+read `.nvmrc` in the first place.
 
 ### Every rule now has to prove it fires
 
@@ -422,7 +405,7 @@ its parent was. The other two new rules were right and the code changed instead:
 | Account                 | **org `hogasi`, on Team ($4/user/mo); personal account downgraded to Free** | Same price as personal Pro for one user, and buys the two things this plan is actually about: org-level secrets for private repos (one `ANTHROPIC_API_KEY`, rotated once) and org rulesets (branch protection defined once by repo pattern). Doing it at zero repos is free; doing it at four means rewriting every `uses:` path and the npm scope. Total spend stays $4/mo — the org replaces personal Pro rather than adding to it. Caveat: Team bills per seat, so if collaborators are likely, personal Pro is cheaper per head. |
 | Package registry        | npm, public scope                                                           | Public scope is free. `pnpm` cannot install a subdirectory of a git repo reliably, so a registry is genuinely needed. Reserve the scope early.                                                                                                                                                                                                                                                                                                                                                                                       |
 | Renaming later          | GitHub org: yes, with redirects. npm scope: **no**                          | Org rename redirects web and git traffic, but releases the old name for anyone to claim — immediately re-create it as a placeholder org, or a squatter inherits your `uses:` references. Pages URLs do not redirect. npm has no scope rename: changing means republishing every package and editing every consumer. That cost scales with consumer count, not time — trivial at one product repo, painful at four.                                                                                                                   |
-| Package versioning      | **fixed** (all packages share a version) via changesets                     | Independent versioning means reasoning about a compatibility matrix across four repos for zero benefit. One version number, one changelog.                                                                                                                                                                                                                                                                                                                                                                                           |
+| Package versioning      | **fixed** (all packages share one version, bumped with `pnpm bump`)         | Independent versioning means reasoning about a compatibility matrix across four repos for zero benefit. One version number, one changelog.                                                                                                                                                                                                                                                                                                                                                                                           |
 | Workflow versioning     | moving `v1` tag, force-updated on release                                   | Same model as `actions/checkout`. Consumers pin `@v1`; a breaking process change becomes `v2` and repos opt in one at a time.                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ## Constraints that change the layout
@@ -445,7 +428,6 @@ These are real GitHub limits, not preferences:
 ```
 .tooling/                             (public)
 ├── .github/workflows/
-│   ├── release.yml                  changesets publish + retag v1
 │   └── self-ci.yml                  this repo's own CI
 ├── packages/
 │   ├── tsconfig/
@@ -456,7 +438,6 @@ These are real GitHub limits, not preferences:
 ├── renovate/
 │   └── default.json
 ├── agents/                          (stage 2 — empty for now)
-├── .changeset/
 ├── pnpm-workspace.yaml
 └── package.json
 ```
@@ -661,8 +642,8 @@ then decide whether the planner earns its cost.
 
 **Stage 0 — this week.** Org and plan done; the manual checklist at the top is
 the remaining prerequisite. Then: public tooling repo, pnpm workspace,
-changesets, `@hogasi/tsconfig` published, `release.yml` with the `v1` retag.
-Then build product repo #1 consuming it. Nothing else.
+`@hogasi/tsconfig` published, the release job with the `v1` retag. Then build
+product repo #1 consuming it. Nothing else.
 
 Org-level config is applied by hand in the GitHub UI, using the manual checklist
 at the top of this file as the record of what it should be.

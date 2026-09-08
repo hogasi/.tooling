@@ -22,13 +22,38 @@ jobs:
   release:
     needs: [check, actionlint, gitleaks, renovate-config]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: write
-      pull-requests: write
+      # What lets pnpm mint the OIDC token it trades with npm for a short-lived
+      # publish credential. No npm token is stored anywhere.
       id-token: write
-    uses: ./.github/workflows/release.yml
-    secrets:
-      RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # `pnpm -r publish` skips any package whose version is already on the
+      # registry, so this is a no-op on every push that did not bump one. That
+      # is what makes it safe to run on all of them and removes the need for a
+      # release PR to decide when to publish.
+      #
+      # pnpm falls back to publishing anonymously when the OIDC exchange fails,
+      # which npm reports as a bare `E404`. The real reason is always on the
+      # line above it, as `Skipped OIDC: <reason>`.
+      - run: pnpm release
+
+      # Consumers pin `@v1`. Move it to whatever is on `main` so they pick up
+      # workflow and action changes without editing every caller.
+      - run: git tag --force v1 && git push --force origin v1
 
   check:
     name: Build & tests
