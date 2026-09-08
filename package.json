@@ -10,11 +10,12 @@
     "lint": "prettier --check . && eslint . --max-warnings=0",
     "format": "prettier --write .",
     "check": "pnpm lint && fallow && fallow security --fail-on-issues && node --test",
+    "precommit": "gitleaks git --staged --no-banner --redact && lint-staged && pnpm check",
     "release": "changeset publish",
-    "prepare": "simple-git-hooks"
+    "prepare": "husky"
   },
-  "simple-git-hooks": {
-    "pre-commit": "sh scripts/pre-commit.sh"
+  "lint-staged": {
+    "*": "prettier --write --ignore-unknown"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.2",
@@ -24,8 +25,9 @@
     "@hogasi/tsconfig": "workspace:*",
     "eslint": "^10.10.0",
     "fallow": "^3.23.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.5.0",
     "prettier": "^3.9.6",
-    "simple-git-hooks": "^2.13.1",
     "typescript": "^6.0.3"
   },
   "prettier": "@hogasi/prettier-config"

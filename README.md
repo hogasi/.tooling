@@ -214,20 +214,26 @@ reasoning behind each one.
 
 ## Working on this repo
 
-`pnpm install` installs a `pre-commit` hook via `simple-git-hooks`. It scans the
-staged diff with `gitleaks`, applies Prettier, and then runs `pnpm check` — the
-same gate CI runs, so a red build shows up before the push rather than after it.
+`pnpm install` installs `.husky/pre-commit` via husky. The hook is one line,
+`pnpm precommit`, which scans the staged diff with `gitleaks`, formats the
+staged files with Prettier, then runs `pnpm check` — the same gate CI runs, so a
+red build shows up before the push rather than after it. Run `pnpm precommit` by
+hand any time.
 
-Two things it deliberately does not do: it never runs `eslint --fix`, because a
-lint fix can rewrite logic and that belongs under review rather than inside a
-commit hook, and it re-stages only paths that were already staged, so changes
-left out of the commit on purpose stay out of it.
+Formatting goes through `lint-staged` rather than `pnpm format`, so it touches
+only the files in the commit and re-stages exactly those. A plain
+`pnpm format && git add -u` would stage every modified tracked file, sweeping in
+changes left out of the commit on purpose.
 
-`gitleaks` is optional — the hook warns and skips the scan if it is missing
-(`brew install gitleaks`), since CI scans the full history regardless. Node must
-match `.nvmrc`; the hook sources `nvm` itself so GUI Git clients work. To bypass
-it for one commit:
+`eslint --fix` is deliberately not run: Prettier only moves whitespace, while a
+lint fix can rewrite logic, and that belongs under review rather than applied
+silently underneath a commit.
+
+`gitleaks` must be installed (`brew install gitleaks`); the hook fails loudly if
+it is missing rather than skipping the scan. A hook is a fast feedback loop,
+never a gate: `--no-verify` skips it, and a fresh clone has none until someone
+installs. CI is what actually enforces this.
 
 ```sh
-SKIP_SIMPLE_GIT_HOOKS=1 git commit
+HUSKY=0 git commit
 ```

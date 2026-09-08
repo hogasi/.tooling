@@ -2,11 +2,6 @@ packages:
   - packages/*
 
 allowBuilds:
-  # The hooks are installed by the root `prepare` script, which runs on every
-  # install anyway. Letting the package's own postinstall touch `.git` as well
-  # would just be a second, less visible path to the same result.
-  simple-git-hooks: false
-
   # eslint-import-resolver-typescript's native binding. Without the build it
   # falls back to a slow path or fails to resolve, so the shared eslint config
   # cannot be tested honestly.

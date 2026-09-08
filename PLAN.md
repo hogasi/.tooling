@@ -359,16 +359,30 @@ its parent was. The other two new rules were right and the code changed instead:
 
 ### Adopted from sil
 
-- **`simple-git-hooks` and `scripts/pre-commit.sh`.** Runs the same gate as CI
-  (`pnpm check`) plus a staged-diff secret scan, so a red build is caught before
-  the push rather than after it. Four deliberate differences from sil's script:
-  it compares Node **major** versions, because `.nvmrc` here pins `24` rather
-  than a full version; it calls `gitleaks git --staged` instead of the
-  deprecated `protect` subcommand; it re-stages only the paths that were already
-  staged, where `git add -u` would sweep in changes left out of the commit on
-  purpose; and it applies Prettier but not `eslint --fix`, since formatting is
-  whitespace-only while a lint fix can rewrite logic and belongs under review.
-  `SKIP_SIMPLE_GIT_HOOKS=1 git commit` bypasses it.
+- **A pre-commit hook.** `.husky/pre-commit` is one line, `pnpm precommit`, and
+  `precommit` is a command chain in `package.json`: `gitleaks git --staged`,
+  `lint-staged`, then `pnpm check`. No shell script, and a product repo adopts
+  it by copying a few lines. Catches a red build before the push rather than
+  after it.
+
+  Two deliberate differences from sil's script. It calls `gitleaks git --staged`
+  instead of the deprecated `protect` subcommand. And formatting runs through
+  `lint-staged` rather than `pnpm format` followed by `git add -u`: the latter
+  stages every modified tracked file, so a change deliberately left unstaged
+  ends up in the commit. `lint-staged` re-stages only the files it formatted.
+  `eslint --fix` is still not run — Prettier only moves whitespace, a lint fix
+  can rewrite logic. `HUSKY=0 git commit` bypasses the hook.
+
+  **No nvm bootstrap or Node version check in the hook**, unlike sil. Both were
+  copied in and then removed: `.nvmrc` and `engines` already declare the
+  version, CI enforces it, and the bootstrap only earns its keep for GUI Git
+  clients that do not read a shell profile. Add it back if one is ever used.
+
+  **sil installs its hook with `simple-git-hooks`; this repo uses husky.** Both
+  are zero-dependency and the choice is close to arbitrary — husky just drops a
+  layer, since the hook file is the script rather than a package.json entry
+  pointing at one. Worth converging sil onto husky so the org runs one
+  installer, but nothing breaks while they differ.
 
 ### Not adopted from sil
 
