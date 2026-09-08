@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# A pinned runner keeps a GitHub image rollout from changing what the shared
+# tooling is tested against. TZ pins the clock so date-sensitive tests behave
+# the same here as on a contributor's machine.
+env:
+  TZ: UTC
+
+jobs:
+  release:
+    needs: [check, actionlint, gitleaks, renovate-config]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    uses: ./.github/workflows/release.yml
+
+  check:
+    name: Build & tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+
+  actionlint:
+    name: Workflow lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: raven-actions/actionlint@v2.2.0
+
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # gitleaks-action requires a paid licence key for organisation-owned
+      # repositories. The scanner itself is MIT, so run the release binary
+      # directly: no key, and nothing extra to allow-list at the org level.
+      - name: Run gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check --strict
+          tar -xzf "$archive" gitleaks
+          # `git` rather than `dir`: it scans history, so a secret that was
+          # committed and later deleted is still caught. This is why the
+          # checkout above needs the full history.
+          ./gitleaks git . --redact --no-banner
+
+  renovate-config:
+    name: Renovate config
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Every repo in the org extends renovate/default.json, so a preset that
+      # fails to parse silently stops dependency updates everywhere at once.
+      # --no-global is required: without it the validator checks these against
+      # the self-hosted global schema instead of the repo/preset schema.
+      - run: >
+          pnpm dlx --package renovate renovate-config-validator --strict
+          --no-global renovate/default.json renovate.json
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # Advisory only. A new advisory against a transitive dependency must not
+    # block an unrelated pull request, so this is never a required check.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level=high

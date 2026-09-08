@@ -1,0 +1,9 @@
+{
+  "extends": "@hogasi/tsconfig/base",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true
+  },
+  "include": ["packages/*/*.js", "packages/*/*.mjs", "renovate/*.mjs"]
+}

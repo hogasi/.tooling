@@ -1,0 +1,11 @@
+{
+  "github_owned_allowed": true,
+  "verified_allowed": true,
+  "patterns_allowed": [
+    "anthropics/claude-code-action@*",
+    "changesets/action@*",
+    "hogasi/*",
+    "pnpm/action-setup@*",
+    "raven-actions/actionlint@*"
+  ]
+}

@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+
+# eslint-import-resolver-typescript's native binding. Without the build it
+# falls back to a slow path or fails to resolve, so the shared eslint config
+# cannot be tested honestly.
+allowBuilds:
+  unrs-resolver: true

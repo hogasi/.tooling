@@ -1,0 +1,22 @@
+{
+  "name": "@hogasi/tsconfig",
+  "version": "0.1.0",
+  "description": "Shared TypeScript configurations.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hogasi/.tooling.git",
+    "directory": "packages/tsconfig"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "base.json",
+    "svelte.json"
+  ],
+  "exports": {
+    "./base": "./base.json",
+    "./svelte": "./svelte.json"
+  }
+}

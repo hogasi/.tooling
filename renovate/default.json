@@ -1,0 +1,126 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Shared Renovate policy: tiered automerge, grouped noise, manual majors.",
+  "extends": ["config:recommended"],
+  "timezone": "Europe/London",
+  "schedule": ["* 6-7 * * *"],
+  "labels": ["dependencies"],
+  "semanticCommits": "disabled",
+  "commitMessagePrefix": "chore",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 0,
+  "minimumReleaseAge": "7 days",
+  "rangeStrategy": "pin",
+  "lockFileMaintenance": { "enabled": false },
+  "automerge": false,
+  "platformAutomerge": true,
+  "automergeStrategy": "squash",
+  "rebaseWhen": "behind-base-branch",
+  "rebaseLabel": "rebase",
+  "stopUpdatingLabel": "stop-renovate",
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate Dashboard",
+  "dependencyDashboardApproval": false,
+  "vulnerabilityAlerts": {
+    "description": "Security PRs bypass the tiered packageRules, so automerge must be set here explicitly. Without it they fall back to the global automerge:false and stall waiting for a manual merge.",
+    "enabled": true,
+    "addLabels": ["security"],
+    "minimumReleaseAge": "0 days",
+    "schedule": ["at any time"],
+    "prCreation": "immediate",
+    "automerge": true
+  },
+  "osvVulnerabilityAlerts": true,
+  "packageRules": [
+    {
+      "description": "L1 safe: npm patch, pin and digest bumps.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "automerge": true,
+      "minimumReleaseAge": "3 days",
+      "groupName": "l1-npm-safe"
+    },
+    {
+      "description": "L1 tooling minor: dev-only tools that cannot change build output. vite stays at L2 because its minor bumps can change bundling and module resolution.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor"],
+      "matchDepTypes": ["devDependencies"],
+      "matchPackageNames": [
+        "eslint",
+        "prettier",
+        "vitest",
+        "@vitest/*",
+        "typescript",
+        "svelte-check",
+        "@types/*",
+        "fallow",
+        "@sveltejs/vite-plugin-svelte"
+      ],
+      "automerge": true,
+      "minimumReleaseAge": "7 days",
+      "groupName": "l1-tooling-minor"
+    },
+    {
+      "description": "L1 actions: workflow and action refs.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch", "minor", "digest"],
+      "automerge": true,
+      "minimumReleaseAge": "14 days",
+      "groupName": "l1-actions"
+    },
+    {
+      "description": "L1 docker: base images.",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchUpdateTypes": ["patch", "minor", "digest"],
+      "automerge": true,
+      "minimumReleaseAge": "14 days",
+      "groupName": "l1-docker"
+    },
+    {
+      "description": "L1 deno.",
+      "matchManagers": ["deno"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true,
+      "minimumReleaseAge": "7 days",
+      "groupName": "l1-deno"
+    },
+    {
+      "description": "L2 runtime minor: ships to users, so it goes through the full check gate.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor"],
+      "matchDepTypes": ["dependencies", "optionalDependencies"],
+      "automerge": true,
+      "minimumReleaseAge": "7 days",
+      "groupName": "l2-runtime-minor"
+    },
+    {
+      "description": "L2 catalog minor: pnpm catalog entries report depType pnpm.catalog.default, so the dev/runtime-gated rules above never match them and their minor bumps would stall on the global automerge:false. A catalog flattens the dev/runtime split, so all minor catalog bumps share one tier.",
+      "matchDepTypes": ["pnpm.catalog.default"],
+      "matchUpdateTypes": ["minor"],
+      "automerge": true,
+      "minimumReleaseAge": "7 days",
+      "groupName": "l2-catalog-minor"
+    },
+    {
+      "description": "L3 majors always need a human.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "minimumReleaseAge": "14 days",
+      "addLabels": ["major", "needs-review"]
+    },
+    {
+      "description": "Deps deliberately pinned to a prerelease channel are upgraded by hand. config:recommended already ignores prerelease upgrades for stable-pinned deps.",
+      "matchCurrentVersion": "/-(alpha|beta|rc|next|canary)/i",
+      "enabled": false
+    },
+    {
+      "description": "Update-kind labels stack on top of the tiers above so every PR is filterable by what changed.",
+      "matchUpdateTypes": ["minor"],
+      "addLabels": ["minor"]
+    },
+    {
+      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "addLabels": ["patch"]
+    }
+  ]
+}

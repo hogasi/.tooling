@@ -1,0 +1,4 @@
+{
+  "extends": "@hogasi/tsconfig/svelte",
+  "files": []
+}

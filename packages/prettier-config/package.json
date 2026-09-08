@@ -1,0 +1,29 @@
+{
+  "name": "@hogasi/prettier-config",
+  "version": "0.1.0",
+  "description": "Shared Prettier configuration.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hogasi/.tooling.git",
+    "directory": "packages/prettier-config"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "index.js"
+  ],
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "dependencies": {
+    "prettier-plugin-svelte": "^4.1.1",
+    "prettier-plugin-tailwindcss": "^0.8.1"
+  },
+  "peerDependencies": {
+    "prettier": "^3.9.6"
+  }
+}

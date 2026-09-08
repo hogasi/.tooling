@@ -1,0 +1,45 @@
+{
+  "name": "@hogasi/eslint-config",
+  "version": "0.1.0",
+  "description": "Shared ESLint flat configuration.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hogasi/.tooling.git",
+    "directory": "packages/eslint-config"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "houseRules.js",
+    "index.js",
+    "overrides.js",
+    "presets.js"
+  ],
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "dependencies": {
+    "@eslint/compat": "^2.1.1",
+    "@eslint/js": "^10.0.1",
+    "@vitest/eslint-plugin": "^1.6.27",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import-x": "^4.17.1",
+    "eslint-plugin-perfectionist": "^5.11.0",
+    "eslint-plugin-promise": "^7.3.0",
+    "eslint-plugin-security": "^4.0.1",
+    "eslint-plugin-svelte": "^3.23.0",
+    "eslint-plugin-unicorn": "^74.0.0",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "globals": "^17.12.0",
+    "typescript-eslint": "^8.69.0"
+  },
+  "peerDependencies": {
+    "eslint": "^10.8.1",
+    "typescript": ">=5.9.3 <6.1.0"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "extends": ["npm:@hogasi/fallow-config"],
+  "workspaces": { "patterns": ["packages/*"] },
+
+  // Tests run under `node --test`, which fallow has no plugin for, so nothing
+  // imports them and they look unreachable. Here they are the entry points.
+  "entry": ["packages/*/*.test.mjs", "renovate/*.test.mjs"],
+
+  // Deliberately broken fixtures the fallow-config tests build and delete.
+  "ignorePatterns": ["packages/*/tmp-fixture-*/**"],
+
+  // `extends` arrays replace rather than merge, so the base config's own
+  // entry has to be repeated here alongside the local ones.
+  //
+  // The Prettier plugins are referenced by name through `import.meta.resolve`,
+  // because Prettier resolves a bare plugin name from the *consumer's*
+  // directory. No static import exists for any analyser to find.
+  "ignoreDependencies": [
+    "@hogasi/fallow-config",
+    "prettier-plugin-svelte",
+    "prettier-plugin-tailwindcss"
+  ],
+
+  "health": {
+    "thresholdOverrides": [
+      {
+        "files": ["packages/vitest-config/index.js"],
+        "functions": ["thresholdsFor"],
+        "maxCrap": 45,
+        "reason": "CRAP is estimated, not measured: `node --test` emits no Istanbul coverage, and fallow scores an unexported helper as 0% covered. Six unit tests exercise every branch of it. Product repos wire `fallow health --coverage` instead and do not need this."
+      }
+    ]
+  }
+}

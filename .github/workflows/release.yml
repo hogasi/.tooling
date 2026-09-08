@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # `changeset publish` shells out to `pnpm publish` in a pnpm workspace, so
+      # trusted publishing (OIDC) rides on pnpm's implementation, not npm's.
+      # No NPM_TOKEN is involved. `id-token: write` above is what makes it work.
+      # v2 renamed every input this step uses: `version` to `version-script`,
+      # `publish` to `publish-script`, `title` to `pr-title`, `commit` to
+      # `commit-message`, and the GITHUB_TOKEN env var to a `github-token`
+      # input. The old names are silently ignored, not rejected.
+      - id: changesets
+        uses: changesets/action@v2.1.2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version-script: pnpm changeset version
+          publish-script: pnpm release
+          pr-title: "chore: release"
+          commit-message: "chore: release"
+
+      # Consumers pin `@v1`. Move it to whatever was just released so they pick
+      # up workflow and action changes without editing every caller.
+      - if: steps.changesets.outputs.published == 'true'
+        run: |
+          git tag --force v1
+          git push --force origin v1

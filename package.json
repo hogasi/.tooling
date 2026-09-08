@@ -1,0 +1,27 @@
+{
+  "name": "hogasi-tooling",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "prettier --check . && eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "check": "pnpm lint && fallow && fallow security --fail-on-issues && node --test",
+    "release": "changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^3.0.2",
+    "@hogasi/eslint-config": "workspace:*",
+    "@hogasi/fallow-config": "workspace:*",
+    "@hogasi/prettier-config": "workspace:*",
+    "@hogasi/tsconfig": "workspace:*",
+    "eslint": "^10.10.0",
+    "fallow": "^3.23.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3"
+  },
+  "prettier": "@hogasi/prettier-config"
+}

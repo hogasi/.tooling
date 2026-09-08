@@ -1,0 +1,25 @@
+{
+  "name": "@hogasi/fallow-config",
+  "version": "0.1.0",
+  "description": "Shared fallow configuration: dead code, complexity and security gates.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hogasi/.tooling.git",
+    "directory": "packages/fallow-config"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "base.jsonc"
+  ],
+  "main": "./base.jsonc",
+  "exports": {
+    ".": "./base.jsonc",
+    "./base": "./base.jsonc"
+  },
+  "peerDependencies": {
+    "fallow": "^3.22.0"
+  }
+}

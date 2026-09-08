@@ -1,0 +1,41 @@
+{
+  "name": "@hogasi/vitest-config",
+  "version": "0.1.0",
+  "description": "Shared Vitest test options.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hogasi/.tooling.git",
+    "directory": "packages/vitest-config"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "index.d.ts",
+    "index.js"
+  ],
+  "main": "./index.js",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "peerDependencies": {
+    "@vitest/coverage-v8": "^5.0.0",
+    "vitest": "^5.0.0",
+    "jsdom": "^30.0.1"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^5.0.0",
+    "vitest": "^5.0.0",
+    "jsdom": "^30.0.1"
+  },
+  "peerDependenciesMeta": {
+    "jsdom": {
+      "optional": true
+    }
+  }
+}

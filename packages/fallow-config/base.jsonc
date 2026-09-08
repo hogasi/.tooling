@@ -1,0 +1,95 @@
+{
+  // Every repo extending this config installs it, and every repo's fallow
+  // then reports it unused: `extends` is resolved by fallow itself, so no
+  // import of it exists anywhere for the analyser to find.
+  //
+  // Arrays replace rather than merge across `extends`, so a repo that sets
+  // its own `ignoreDependencies` has to repeat this entry.
+  "ignoreDependencies": ["@hogasi/fallow-config"],
+
+  // Rules fallow ships as `warn` exit 0 and therefore gate nothing. These are
+  // the ones that describe a defect rather than an observation.
+  "rules": {
+    // A devDependency reached from shipped code is a broken install away from
+    // a runtime crash.
+    "dev-dependencies-in-production": "error",
+    "re-export-cycle": "error",
+    // Suppressing a finding is allowed; suppressing it silently, or leaving
+    // the suppression behind after the code was fixed, is not.
+    "require-suppression-reason": "error",
+    "stale-suppressions": "error",
+    // Both off by default. `fallow security` is the only surface that reports
+    // them, so they gate only where that command runs.
+    "security-client-server-leak": "error",
+    "security-sink": "error",
+    "unused-dev-dependencies": "error",
+    "unused-optional-dependencies": "error"
+  },
+
+  "health": {
+    // ESLint already caps cyclomatic complexity at 8, function length at 30
+    // code lines and nesting at 3, so fallow's own ceilings for those never
+    // fire first and are left at their defaults. Cognitive complexity is the
+    // one ESLint has no rule for, so it is the one worth setting here.
+    "maxCognitive": 12
+  },
+
+  "security": {
+    // `include` is a strict whitelist, not an addition: listing anything drops
+    // every category left out. `hardcoded-secret` and `secret-to-network` only
+    // ever run from an include list, so getting those two means naming all of
+    // them. `fallow-config.test.mjs` fails if fallow's catalogue and this list
+    // ever diverge, which is what keeps an upgrade from silently narrowing the
+    // scan.
+    "categories": {
+      "include": [
+        "angular-trusted-html",
+        "cleartext-transport",
+        "code-injection",
+        "command-injection",
+        "dangerous-html",
+        "deprecated-cipher",
+        "dom-document-write",
+        "dynamic-module-load",
+        "dynamic-regex",
+        "electron-unsafe-webpreferences",
+        "hardcoded-secret",
+        "header-injection",
+        "insecure-cookie",
+        "insecure-randomness",
+        "insecure-temp-file",
+        "jquery-html",
+        "jwt-alg-none",
+        "jwt-verify-missing-algorithms",
+        "llm-call-injection",
+        "mass-assignment",
+        "mysql-multiple-statements",
+        "nextjs-open-redirect",
+        "nosql-injection",
+        "open-redirect",
+        "path-traversal",
+        "permissive-cors",
+        "postmessage-wildcard-origin",
+        "prototype-pollution",
+        "redos-regex",
+        "resource-amplification",
+        "route-send-file",
+        "secret-pii-log",
+        "secret-to-network",
+        "sql-injection",
+        "ssrf",
+        "ssti",
+        "template-escape-bypass",
+        "tls-validation-disabled",
+        "unsafe-buffer-alloc",
+        "unsafe-deserialization",
+        "weak-crypto",
+        "webview-injection",
+        "world-writable-permission",
+        "xpath-injection",
+        "xxe",
+        "zip-slip"
+      ]
+    }
+  }
+}
