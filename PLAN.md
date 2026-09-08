@@ -16,21 +16,55 @@ independent push trigger, and main CI runs are not cancelled by later pushes.
 Org-wide required merge checks remain a rollout task; publishing is already
 gated without them.
 
-Done: org `hogasi` exists and is on Team. Personal Pro downgraded. Org config
-written as versioned files under `org/`. gh token has `admin:org`.
-`hogasi/.tooling` exists (public, empty, no commits pushed) — renamed from
-`platform-tooling`. Local checkout lives at `~/hogasi/tooling`. The old personal
-`.tooling` repo was deleted, which is what freed the name.
+Done: org `hogasi` exists and is on Team. Personal Pro downgraded. Org config is
+applied by hand in the GitHub UI, per the checklist below — it is not kept as
+files here, because config-as-code nobody remembers to run reads as applied when
+it is not. gh token has `admin:org`. `hogasi/.tooling` exists (public, empty, no
+commits pushed) — renamed from `platform-tooling`. Local checkout lives at
+`~/hogasi/tooling`. The old personal `.tooling` repo was deleted, which is what
+freed the name.
 
 ### Manual — needs you (in this order)
 
-1. **Apply the org rules.** Actions allow-list, read-only default
-   `GITHUB_TOKEN`, and the `main` ruleset (PR required, no force-push, no
-   deletion, org admins bypass). Not yet applied: rulesets are empty and actions
-   are still "all allowed".
+1. **Apply the org rules by hand.** Nothing here applies them for you.
+
+   **Settings → Actions → General**
+   (https://github.com/organizations/hogasi/settings/actions):
+   - _Policies_: **Allow enterprise, and select non-enterprise, actions and
+     reusable workflows**, enabled for **all repositories**. Tick **Allow
+     actions created by GitHub** and **Allow actions by Marketplace verified
+     creators**, then list these patterns:
+     ```
+     anthropics/claude-code-action@*
+     changesets/action@*
+     hogasi/*
+     pnpm/action-setup@*
+     raven-actions/actionlint@*
+     ```
+   - _Workflow permissions_: **Read repository contents and packages
+     permissions**, and tick **Allow GitHub Actions to create and approve pull
+     requests**. The tick box is required — without it `changesets/action` gets
+     a 403 and the release PR is never opened. See the note below on why this
+     grants nothing extra today.
+
+   **Settings → Repository → Rulesets → New ruleset** — name it
+   `main: PR required, no force-push, no deletion`, enforcement **Active**,
+   target **all repositories** and the **default branch**. Enable: restrict
+   deletions, block force pushes, and require a pull request with **0
+   approvals** plus **require conversation resolution before merging**. Add
+   **Organization admin** as a bypass actor set to **Always**.
+
+   **Repository-level check.** The Actions workflow permission also exists per
+   repository and an existing repo keeps its own value, so setting the org
+   default does not necessarily flip it. Confirm and fix `.tooling` directly:
+
    ```sh
-   ./org/apply.sh
+   gh api repos/hogasi/.tooling/actions/permissions/workflow
+   gh api -X PUT repos/hogasi/.tooling/actions/permissions/workflow \
+     -F default_workflow_permissions=read \
+     -F can_approve_pull_request_reviews=true
    ```
+
 2. **Log in to npm and claim the scope.** The scope cannot be renamed later, so
    do this before any `package.json` is written. There is no CLI for creating an
    org; `npm org` only manages members. Create it in the browser at
@@ -92,14 +126,13 @@ Three deviations from the sketch above, each deliberate:
 
 One org setting had to be loosened to make this work:
 
-- **`can_approve_pull_request_reviews` is now `true`** in
-  `org/actions-workflow-permissions.json`. That field is the API side of "Allow
-  GitHub Actions to create and approve pull requests", and it gates _creation_
-  as well as approval. With it off, `changesets/action` gets a 403 the first
-  time a changeset lands and the release pipeline silently never fires. It
-  grants nothing extra today because required approvals is 0 — but if that count
-  ever rises, an Actions-approved PR would satisfy it, so revisit this line at
-  the same time.
+- **`can_approve_pull_request_reviews` is now `true`** in the org Actions
+  settings. That field is the API side of "Allow GitHub Actions to create and
+  approve pull requests", and it gates _creation_ as well as approval. With it
+  off, `changesets/action` gets a 403 the first time a changeset lands and the
+  release pipeline silently never fires. It grants nothing extra today because
+  required approvals is 0 — but if that count ever rises, an Actions-approved PR
+  would satisfy it, so revisit this line at the same time.
 
 ### CI hardening pulled forward from sil
 
@@ -127,7 +160,7 @@ One org setting had to be loosened to make this work:
 - **`audit` is `continue-on-error` and never a required check.** A new advisory
   against a transitive dependency must not block an unrelated pull request.
 - **`actionlint` is the one added third-party action**, so
-  `raven-actions/actionlint@*` joins `org/actions-allowed.json`.
+  `raven-actions/actionlint@*` joins the org Actions allow-list.
 - **Action pins moved to `actions/checkout@v7`, `actions/setup-node@v7` and
   `pnpm/action-setup@v6.1.0`.** The last one matters most: pnpm 11 support
   landed in `action-setup` v6, and this workspace is on pnpm 11.
@@ -324,10 +357,21 @@ its parent was. The other two new rules were right and the code changed instead:
   created inside its package, so a crashed run would have left a directory that
   `prettier --check` then failed on. Added to `.prettierignore` as well.
 
+### Adopted from sil
+
+- **`simple-git-hooks` and `scripts/pre-commit.sh`.** Runs the same gate as CI
+  (`pnpm check`) plus a staged-diff secret scan, so a red build is caught before
+  the push rather than after it. Four deliberate differences from sil's script:
+  it compares Node **major** versions, because `.nvmrc` here pins `24` rather
+  than a full version; it calls `gitleaks git --staged` instead of the
+  deprecated `protect` subcommand; it re-stages only the paths that were already
+  staged, where `git add -u` would sweep in changes left out of the commit on
+  purpose; and it applies Prettier but not `eslint --fix`, since formatting is
+  whitespace-only while a lint fix can rewrite logic and belongs under review.
+  `SKIP_SIMPLE_GIT_HOOKS=1 git commit` bypasses it.
+
 ### Not adopted from sil
 
-- **`simple-git-hooks` and a pre-commit script.** CI already covers every gate
-  in it, and hooks change local commit ergonomics — your call, not a default.
 - **`boot-smoke`.** Product-specific; there is nothing here to boot.
 - **`claude.yml` as written.** It fires on `@claude` in any comment with no
   `author_association` gate. Stage 2 must add that gate. A prompt-level
@@ -340,7 +384,7 @@ its parent was. The other two new rules were right and the code changed instead:
   blocks every merge in every repo. `ci-node.yml` now exists, but a reusable
   workflow reports as `<caller job id> / ci`, not `ci` — so the exact string
   depends on what product repo #1 names its job. Observe it on the first real
-  PR, then add it to `org/ruleset-main.json`.
+  PR, then add it to the `main` ruleset.
 - **Required approvals is 0.** GitHub won't let a PR author approve their own
   PR, so any count above zero locks a solo maintainer out entirely. The AI
   review checks become the gate instead, via required status checks.
@@ -390,7 +434,6 @@ These are real GitHub limits, not preferences:
 │   └── fallow-config/
 ├── renovate/
 │   └── default.json
-├── org/                             org-level GitHub settings as JSON + apply.sh
 ├── agents/                          (stage 2 — empty for now)
 ├── .changeset/
 ├── pnpm-workspace.yaml
@@ -600,8 +643,8 @@ the remaining prerequisite. Then: public tooling repo, pnpm workspace,
 changesets, `@hogasi/tsconfig` published, `release.yml` with the `v1` retag.
 Then build product repo #1 consuming it. Nothing else.
 
-Org-level config lives in `org/` and is applied with `org/apply.sh`, never
-clicked together per repo.
+Org-level config is applied by hand in the GitHub UI, using the manual checklist
+at the top of this file as the record of what it should be.
 
 **Stage 1 — after product repo #2 exists.** eslint-config and prettier-config,
 extracted from what the two repos actually share rather than guessed. Renovate

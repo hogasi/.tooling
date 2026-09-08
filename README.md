@@ -207,5 +207,27 @@ anywhere.
 
 ## Org settings
 
-`org/` holds org-level GitHub configuration as JSON. Apply it with
-`./org/apply.sh`; never click it together per repo.
+These are set by hand in the GitHub UI, once, and are not tracked as files here.
+Config-as-code that nobody remembers to apply reads as applied when it is not,
+which is worse than a checklist. See `PLAN.md` for the current values and the
+reasoning behind each one.
+
+## Working on this repo
+
+`pnpm install` installs a `pre-commit` hook via `simple-git-hooks`. It scans the
+staged diff with `gitleaks`, applies Prettier, and then runs `pnpm check` — the
+same gate CI runs, so a red build shows up before the push rather than after it.
+
+Two things it deliberately does not do: it never runs `eslint --fix`, because a
+lint fix can rewrite logic and that belongs under review rather than inside a
+commit hook, and it re-stages only paths that were already staged, so changes
+left out of the commit on purpose stay out of it.
+
+`gitleaks` is optional — the hook warns and skips the scan if it is missing
+(`brew install gitleaks`), since CI scans the full history regardless. Node must
+match `.nvmrc`; the hook sources `nvm` itself so GUI Git clients work. To bypass
+it for one commit:
+
+```sh
+SKIP_SIMPLE_GIT_HOOKS=1 git commit
+```
