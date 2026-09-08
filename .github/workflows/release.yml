@@ -1,7 +1,13 @@
 name: Release
 
 on:
+  # A reusable workflow inherits no secrets. Declaring it here and passing it
+  # from the caller keeps the grant to this one secret, rather than handing the
+  # whole store over with `secrets: inherit`.
   workflow_call:
+    secrets:
+      RELEASE_PAT:
+        required: true
 
 permissions:
   contents: write
