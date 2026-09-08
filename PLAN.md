@@ -65,7 +65,14 @@ freed the name.
      -F can_approve_pull_request_reviews=true
    ```
 
-2. **Log in to npm and claim the scope.** The scope cannot be renamed later, so
+2. **Add the `RELEASE_PAT` repository secret.** Settings → Secrets and variables
+   → Actions. A fine-grained token scoped to this repo with **contents: read and
+   write** and **pull requests: read and write**. It merges the `chore: release`
+   PR; a merge made with `GITHUB_TOKEN` starts no new workflow run, so the
+   publish would never fire. Without it the release PR is opened and then sits
+   there.
+
+3. **Log in to npm and claim the scope.** The scope cannot be renamed later, so
    do this before any `package.json` is written. There is no CLI for creating an
    org; `npm org` only manages members. Create it in the browser at
    https://www.npmjs.com/org/create (free, public packages). The `hogasi`
@@ -76,7 +83,7 @@ freed the name.
    Note: the `npm` shell alias in zsh is broken
    (`command not found: _block_mgr`); use the binary directly or fix the shell
    function first.
-3. **UI-only settings** — no API for these:
+4. **UI-only settings** — no API for these:
    - Org → Settings → Authentication security → **Require two-factor
      authentication**. Your own account must have 2FA on first, or you get
      locked out of the org.
@@ -85,7 +92,7 @@ freed the name.
      Stage 2, not before.
    - Install the **Renovate** GitHub App on the org (github.com/apps/renovate),
      all repositories. Needed at Stage 1.
-4. **Drop the `delete_repo` scope** now that the personal repo is deleted:
+5. **Drop the `delete_repo` scope** now that the personal repo is deleted:
    `gh auth refresh -h github.com -r delete_repo`.
 
 ### Stage 0 scaffold — built

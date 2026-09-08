@@ -205,6 +205,18 @@ Then add a trusted publisher on npmjs.com pointing at `release.yml` in this
 repo. Every later release publishes over OIDC, with no npm token stored
 anywhere.
 
+Releases are two runs, and you review neither. A push to `main` carrying
+changesets opens a `chore: release` PR holding the version bumps and CHANGELOGs;
+release.yml merges it immediately, and the resulting push runs CI again and
+publishes. The version bump has to land on `main` either way, or the repo drifts
+from the registry and the next release computes from stale numbers.
+
+That merge needs `RELEASE_PAT`, a repository secret holding a fine-grained token
+with **contents: read and write** and **pull requests: read and write** on this
+repo. It is not an npm credential: a merge made with the default `GITHUB_TOKEN`
+does not start a new workflow run, so the publish would never fire. It is the
+one stored secret in the pipeline, and it needs rotating when it expires.
+
 ## Org settings
 
 These are set by hand in the GitHub UI, once, and are not tracked as files here.
