@@ -1,6 +1,6 @@
 {
   "name": "@hogasi/fallow-config",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared fallow configuration: dead code, complexity and security gates.",
   "license": "MIT",
   "repository": {
