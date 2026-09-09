@@ -86,8 +86,7 @@ Workspace, `@hogasi/tsconfig`, `@hogasi/prettier-config`,
 `renovate/default.json` and `self-ci.yml` are in the tree. `actions/setup`,
 `ci-node.yml` and `renovate-failed.yml` were built and then removed — see
 "Reusable CI removed until there is a second repo" below. `pnpm lint` and
-`pnpm check` pass locally. Nothing is committed yet, and the first `npm publish`
-still waits on the npm org above.
+`pnpm check` pass locally.
 
 The two lint packages, the Renovate preset and the shape of the tsconfig base
 were all pulled forward from Stage 1. The plan wanted them derived from two

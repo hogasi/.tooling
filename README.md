@@ -1,71 +1,60 @@
 # .tooling
 
-Shared configuration packages for the `hogasi` org. The build plan and the
-reasoning behind each decision live in [PLAN.md](PLAN.md).
+Shared config packages for the `hogasi` org. Every decision and its reasoning
+lives in [PLAN.md](PLAN.md) — this file is just how to use them.
 
-## The contract
+## Setup
 
-Every repo exposes the same script names, and the tooling only ever calls those:
-
-```
-pnpm check · pnpm build · pnpm test:e2e
-```
-
-`check` is one aggregate covering every gate that must pass: format, lint,
-typecheck, dead code, complexity, security and tests. Keeping it as a single
-script lets a repo add a gate without changing anything shared.
-
-The repo also needs a `.nvmrc`, which is where the Node version lives.
-
-Reusable workflows and the composite setup action were removed until there is a
-second repo to consume them. Their design is recorded in [PLAN.md](PLAN.md), so
-it can come back without being redesigned.
-
-## Consuming it
-
-These live on **GitHub Packages**, not npmjs, so every consumer authenticates
-before it can install — including for public packages. Each consuming repo needs
-an `.npmrc`:
+Packages ship to **GitHub Packages**, which requires auth even for public
+packages. Commit this `.npmrc` in each consuming repo:
 
 ```
 @hogasi:registry=https://npm.pkg.github.com
 //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
 ```
 
-Commit that file; it holds no secret, only the variable name. Then:
+It holds no secret, only the variable name. Then set `NODE_AUTH_TOKEN`:
 
-- **Locally**, export `NODE_AUTH_TOKEN` as a GitHub token with `read:packages`.
-  A classic PAT works, and one token covers every repo in the org.
-- **In CI**, set `NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}` on the install
-  step and grant the job `packages: read`. Nothing to store.
+- **Locally** — a GitHub token with `read:packages`. One covers the whole org.
+- **In CI** — `${{ secrets.GITHUB_TOKEN }}`, plus `packages: read` on the job.
 
-An install that 404s on `@hogasi/*` is almost always this, not a missing
-version.
+> An install that 404s on `@hogasi/*` is this, not a missing version.
 
-`tsconfig.json`, with a browser variant that adds the DOM libraries:
+## The contract
+
+Every repo exposes the same three scripts, and the tooling only calls these:
+
+```
+pnpm check · pnpm build · pnpm test:e2e
+```
+
+`check` is one aggregate of every gate: format, lint, typecheck, dead code,
+complexity, security, tests. One script means a repo can add a gate without
+changing anything shared. A `.nvmrc` holds the Node version.
+
+## Packages
+
+### `@hogasi/tsconfig`
 
 ```json
 { "extends": "@hogasi/tsconfig/base" }
 ```
 
-```json
-{ "extends": "@hogasi/tsconfig/svelte" }
-```
+`/svelte` adds the DOM libraries. The base sets no `lib`, `types` or `noEmit`,
+so you still declare what you target and whether you emit.
 
-The base sets no `lib`, no `types` and no `noEmit`, so each consumer still
-declares what it targets, what ambient types it needs, and whether it emits.
-
-Prettier is referenced from `package.json`, replacing any local `.prettierrc`:
+### `@hogasi/prettier-config`
 
 ```json
 { "prettier": "@hogasi/prettier-config" }
 ```
 
-`.prettierignore` stays per repo, because Prettier does not read an ignore list
-from a shared config.
+Replaces any local `.prettierrc`. Keep your own `.prettierignore` — Prettier
+does not read one from a shared config.
 
-ESLint is a function, not an array. Four settings can only be resolved against
-the consuming repo, so they are passed in and everything else is shared:
+### `@hogasi/eslint-config`
+
+A function, not an array. Four settings can only resolve against your repo:
 
 ```js
 import hogasi from "@hogasi/eslint-config";
@@ -80,23 +69,23 @@ export default defineConfig(
     svelteConfig,
     tsconfigProjects: ["./tsconfig.json", "./apps/*/tsconfig.json"]
   })
-  // Repo-specific overrides go here, after the shared blocks.
+  // Repo overrides go here, after the shared blocks.
 );
 ```
 
-`rootDir` supplies both the TypeScript project root and the `.gitignore` used as
-the ignore list. It is required, and the config throws without it.
+`rootDir` is required and throws when missing — it supplies both the TypeScript
+project root and the `.gitignore` used as the ignore list.
 
-Install Vitest and its coverage provider alongside the shared config. The
-default environment also requires `jsdom`; Node-only consumers can omit it and
-pass `environment: "node"`:
+Two rules surprise people: `no-inline-comments` and `no-warning-comments` are
+errors. A comment beside code usually restates it, and a `TODO` is deferred work
+with nobody assigned. `silviu:` markers, standalone why-comments, JSDoc and lint
+suppressions all stay legal.
+
+### `@hogasi/vitest-config`
 
 ```sh
 pnpm add -D @hogasi/vitest-config vitest @vitest/coverage-v8 jsdom
 ```
-
-Vitest, in `vitest.config.ts`. The package exports the typed `test` block only,
-so plugins and aliases stay with the repo that owns them:
 
 ```ts
 import { svelte } from "@sveltejs/vite-plugin-svelte";
@@ -114,16 +103,14 @@ export default defineConfig({
 });
 ```
 
-`coverageInclude` is required: without it, v8 measures whatever happened to be
-imported and the percentage stops meaning anything. The coverage gate is 100% by
-default, including with plain `vitest run`. Pass `coverageThreshold: 95` for a
-lower bar, or `false` to report coverage without gating on it.
+- `coverageInclude` is **required** — without it v8 measures whatever happened
+  to get imported and the percentage stops meaning anything.
+- Coverage gates at **100%** by default. Pass `coverageThreshold: 95` for a
+  lower bar, or `false` to report without gating.
+- `jsdom` is only needed for the default environment. Node-only consumers omit
+  it and pass `environment: "node"`.
 
-The config also errors on `no-inline-comments` and `no-warning-comments`: a
-comment beside a line of code almost always restates it, and a `TODO` is
-deferred work with nobody assigned. `silviu:` markers are deliberately not
-caught — they record a chosen ceiling and the trigger to raise it. Standalone
-why-comments, JSDoc and lint suppressions all stay legal.
+### `@hogasi/fallow-config`
 
 Dead code, complexity and security, in `.fallowrc.jsonc`:
 
@@ -136,120 +123,87 @@ Dead code, complexity and security, in `.fallowrc.jsonc`:
 }
 ```
 
-Install `fallow` and `@hogasi/fallow-config`, then make `check` run both gates:
-
 ```json
 "check": "pnpm lint && fallow && fallow security --fail-on-issues && vitest run"
 ```
 
-Bare `fallow` is dead code, duplication and health in one pass, and it exits
-non-zero on any finding. `security` is a separate command because its findings
-are candidates for a human to verify, and it never surfaces under the other
-commands — which also means it gates nowhere unless you run it.
+`fallow` covers dead code, duplication and health in one pass and exits non-zero
+on any finding. `security` is separate because its findings need a human — which
+also means it gates nothing unless you run it.
 
-The shared config raises every rule that describes a defect from `warn`, which
-exits 0 and gates nothing, to `error`. It also opts into fallow's two
-include-required security categories, `hardcoded-secret` and
-`secret-to-network`. Doing that means naming all 46 categories, because
-`include` is a whitelist that drops everything left out rather than an addition
-— so the package carries a test that fails if fallow's catalogue and the list
-ever diverge.
+**Three things will bite you:**
 
-Complexity is split deliberately. ESLint already caps cyclomatic complexity at
-8, function length at 30 code lines and nesting at 3, so fallow's ceilings for
-those can never fire first. What fallow adds is cognitive complexity, which
-ESLint has no rule for, and CRAP — complexity weighted by how much of it the
-tests actually reach.
+1. **`extends` replaces arrays, it does not merge them.** Setting your own
+   `ignoreDependencies` drops the base config's — hence the repeat above. It
+   must be ignored because fallow resolves `extends` itself, so no import of it
+   exists for the analyser to find.
+2. **fallow only knows the entry points it can see.** A test runner it has no
+   plugin for makes every test file look unreachable. Declare them under
+   `entry`; don't switch the rule off.
+3. **Suppressions need `--` before the reason.** Write
+   `// fallow-ignore-next-line security-sink -- why`. Without the delimiter,
+   every word of your prose is read as a rule name.
 
-Three things will bite otherwise:
+Complexity is split on purpose: ESLint already caps cyclomatic complexity,
+function length and nesting, so fallow's ceilings for those never fire first.
+What fallow adds is cognitive complexity and CRAP. CRAP is estimated from export
+references unless you feed it real data — pass
+`fallow health --coverage coverage/coverage-final.json` for exact numbers.
 
-- **`extends` replaces arrays, it does not merge them.** Setting your own
-  `ignoreDependencies` drops the base config's, which is why the example repeats
-  `@hogasi/fallow-config`. It has to be ignored because fallow resolves
-  `extends` itself, so no import of it exists for the analyser to find.
-- **fallow only knows the entry points it can see.** A test runner it has no
-  plugin for makes every test file look unreachable. Declare them under `entry`
-  rather than switching the rule off.
-- **Suppressions need `--` before the reason.** Write
-  `// fallow-ignore-next-line security-sink -- why`; without the delimiter every
-  word of the prose is read as a rule name. `require-suppression-reason` and
-  `stale-suppressions` are both errors here, so a suppression must say why and
-  must be deleted once the finding is gone.
-
-CRAP is estimated from export references unless you feed it real data, and the
-estimate scores unexported helpers as untested. Pass
-`fallow health --coverage coverage/coverage-final.json` for exact numbers. It
-needs Istanbul format, which vitest's v8 provider does write, and
-`@hogasi/vitest-config` turns on the `json` reporter for exactly this.
-
-The VS Code extension and the CLI read the same config, and the extension
-prefers `node_modules/.bin/fallow`, so the editor and CI agree on both the rules
-and the version.
-
-Renovate, in `renovate.json`:
+### Renovate
 
 ```json
 { "extends": ["github>hogasi/.tooling//renovate/default"] }
 ```
 
-The preset automerges patches, tooling minors, actions and Docker bumps, holds
-every major for review, and lets security PRs through immediately. Two
-prerequisites, or automerge silently does nothing useful: the repo needs **Allow
-auto-merge** turned on, and it needs required status checks, since merging
-automatically before any check is required merges without a gate.
+Automerges patches, tooling minors, actions and Docker bumps; holds every major
+for review; lets security PRs through immediately.
+
+Two prerequisites or automerge silently does nothing useful: **Allow
+auto-merge** turned on, and **required status checks** — merging before any
+check is required merges without a gate.
 
 ## Releasing
 
-All five packages share one version. To release:
-
 ```sh
-pnpm bump 0.3.0   # or minor / patch
+pnpm bump 0.3.0        # or minor / patch
+git commit -am "chore: release 0.3.0"
+git push
 ```
 
-Commit that and push to `main`. CI publishes anything whose version is not yet
-on the registry and force-moves the `v1` tag that consumers pin. Pushes that
-bump nothing publish nothing, so the job is safe to run on every one of them.
+All five packages share one version. CI publishes anything not yet on the
+registry and force-moves the `v1` tag consumers pin. A push that bumps nothing
+publishes nothing.
 
-Publishing stores no credential: GitHub Packages accepts the workflow's own
-`GITHUB_TOKEN`, so there is no registry account and no secret to rotate.
+The release job runs only on `main`, only after Build & tests, Workflow lint,
+Secret scan and Renovate config pass. It has no independent trigger. No
+credential is stored — GitHub Packages accepts the workflow's own
+`GITHUB_TOKEN`.
 
-The release job runs only for pushes to `main`, and only after Build & tests,
-Workflow lint, Secret scan and Renovate config pass for that commit. Dependency
-audit stays advisory. It has no independent trigger, so nothing publishes
-without those four gates.
-
-A breaking change to the shared contract becomes `v2`, and repos opt in one at a
-time.
-
-## Org settings
-
-These are set by hand in the GitHub UI, once, and are not tracked as files here.
-Config-as-code that nobody remembers to apply reads as applied when it is not,
-which is worse than a checklist. See `PLAN.md` for the current values and the
-reasoning behind each one.
+A breaking change to the contract becomes `v2`, and repos opt in one at a time.
 
 ## Working on this repo
 
-`pnpm install` installs `.husky/pre-commit` via husky. The hook is one line,
-`pnpm precommit`, which scans the staged diff with `gitleaks`, formats the
-staged files with Prettier, then runs `pnpm check` — the same gate CI runs, so a
-red build shows up before the push rather than after it. Run `pnpm precommit` by
+`pnpm install` wires up `.husky/pre-commit`, which is one line:
+`pnpm precommit`. That scans the staged diff with `gitleaks`, formats staged
+files with Prettier, then runs `pnpm check` — the same gate as CI. Run it by
 hand any time.
 
-Formatting goes through `lint-staged` rather than `pnpm format`, so it touches
-only the files in the commit and re-stages exactly those. A plain
-`pnpm format && git add -u` would stage every modified tracked file, sweeping in
-changes left out of the commit on purpose.
-
-`eslint --fix` is deliberately not run: Prettier only moves whitespace, while a
-lint fix can rewrite logic, and that belongs under review rather than applied
-silently underneath a commit.
-
-`gitleaks` must be installed (`brew install gitleaks`); the hook fails loudly if
-it is missing rather than skipping the scan. A hook is a fast feedback loop,
-never a gate: `--no-verify` skips it, and a fresh clone has none until someone
-installs. CI is what actually enforces this.
+- Needs `gitleaks` (`brew install gitleaks`). The hook fails loudly if it's
+  missing rather than skipping the scan.
+- Formatting goes through `lint-staged`, so it touches only files in the commit.
+  `pnpm format && git add -u` would sweep in changes you left out on purpose.
+- `eslint --fix` is deliberately not run. Prettier moves whitespace; a lint fix
+  can rewrite logic, and that belongs under review.
+- The hook is feedback, not a gate — `--no-verify` skips it and a fresh clone
+  has none. CI is what enforces this.
 
 ```sh
-HUSKY=0 git commit
+HUSKY=0 git commit    # skip the hook
 ```
+
+## Org settings
+
+Set by hand in the GitHub UI, once; not tracked as files. Config-as-code nobody
+remembers to apply reads as applied when it isn't. Values and reasoning are in
+[PLAN.md](PLAN.md).
