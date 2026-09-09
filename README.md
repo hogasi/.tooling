@@ -23,6 +23,25 @@ it can come back without being redesigned.
 
 ## Consuming it
 
+These live on **GitHub Packages**, not npmjs, so every consumer authenticates
+before it can install — including for public packages. Each consuming repo needs
+an `.npmrc`:
+
+```
+@hogasi:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+```
+
+Commit that file; it holds no secret, only the variable name. Then:
+
+- **Locally**, export `NODE_AUTH_TOKEN` as a GitHub token with `read:packages`.
+  A classic PAT works, and one token covers every repo in the org.
+- **In CI**, set `NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}` on the install
+  step and grant the job `packages: read`. Nothing to store.
+
+An install that 404s on `@hogasi/*` is almost always this, not a missing
+version.
+
 `tsconfig.json`, with a browser variant that adds the DOM libraries:
 
 ```json

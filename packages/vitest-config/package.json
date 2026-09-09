@@ -10,7 +10,8 @@
     "directory": "packages/vitest-config"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
   },
   "files": [
     "index.d.ts",

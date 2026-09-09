@@ -26,30 +26,34 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
-      # What lets pnpm mint the OIDC token it trades with npm for a short-lived
-      # publish credential. No npm token is stored anywhere.
-      id-token: write
+      # Publishing to GitHub Packages. The job's own GITHUB_TOKEN is the
+      # credential, so nothing is stored in repository secrets.
+      packages: write
     concurrency:
       group: release
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6.1.0
+      # `registry-url` is what makes setup-node write the `.npmrc` that wires
+      # NODE_AUTH_TOKEN to the registry. Without it the token is ignored and
+      # publishing fails as an unauthenticated 404. Each package's
+      # `publishConfig.registry` has to agree with this, or pnpm publishes the
+      # tarball somewhere else entirely.
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
+          registry-url: https://npm.pkg.github.com
       - run: pnpm install --frozen-lockfile
 
       # `pnpm -r publish` skips any package whose version is already on the
       # registry, so this is a no-op on every push that did not bump one. That
       # is what makes it safe to run on all of them and removes the need for a
       # release PR to decide when to publish.
-      #
-      # pnpm falls back to publishing anonymously when the OIDC exchange fails,
-      # which npm reports as a bare `E404`. The real reason is always on the
-      # line above it, as `Skipped OIDC: <reason>`.
       - run: pnpm release
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Consumers pin `@v1`. Move it to whatever is on `main` so they pick up
       # workflow and action changes without editing every caller.

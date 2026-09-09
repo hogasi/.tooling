@@ -61,10 +61,9 @@ freed the name.
      -F default_workflow_permissions=read
    ```
 
-2. **Add a trusted publisher to each of the five packages.** npmjs.com → the
-   package → Settings → Trusted Publisher: repository `hogasi/.tooling`,
-   workflow `self-ci.yml`. npm matches the OIDC claim against the workflow file
-   that actually ran, so this must name the caller, not any workflow it calls.
+2. **Nothing to configure for publishing.** GitHub Packages authenticates with
+   the workflow's own `GITHUB_TOKEN`, so there is no registry account, no secret
+   and no trusted publisher to set up.
 
 3. **Log in to npm and claim the scope.** The scope cannot be renamed later, so
    do this before any `package.json` is written. There is no CLI for creating an
