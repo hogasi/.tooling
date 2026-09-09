@@ -30,16 +30,18 @@ freed the name.
 
    **Settings → Actions → General**
    (https://github.com/organizations/hogasi/settings/actions):
-   - _Policies_: **Allow enterprise, and select non-enterprise, actions and
-     reusable workflows**, enabled for **all repositories**. Tick **Allow
-     actions created by GitHub** and **Allow actions by Marketplace verified
-     creators**, then list these patterns:
-     ```
-     anthropics/claude-code-action@*
-     hogasi/*
-     pnpm/action-setup@*
-     raven-actions/actionlint@*
-     ```
+   - _Policies_: **Allow all actions and reusable workflows**, enabled for **all
+     repositories**. A per-action allow-list is the setting you want here and
+     this plan cannot have it: the API accepts `patterns` with a 204 and
+     silently discards them, because specific patterns need Enterprise Cloud.
+     Restricting to GitHub-owned plus verified creators without patterns is not
+     a usable middle ground — `raven-actions/actionlint` is not from a verified
+     creator, so every run dies with `startup_failure` before any job begins.
+     **Tick _Require actions to be pinned to a full-length commit SHA_
+     instead.** It works on this plan and defends against the same attack the
+     allow-list would: a tag like `@v7` is mutable and can be repointed at new
+     code by whoever owns it, while a SHA cannot. Revisit the pattern list only
+     if the org moves to Enterprise Cloud.
    - _Workflow permissions_: **Read repository contents and packages
      permissions**. Nothing needs the create-and-approve-pull-requests tick box:
      the release job publishes straight from a push to `main` and opens no PR.
