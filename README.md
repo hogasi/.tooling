@@ -207,14 +207,11 @@ pnpm bump 0.3.0   # or minor / patch
 ```
 
 Commit that and push to `main`. CI publishes anything whose version is not yet
-on npm and force-moves the `v1` tag that consumers pin. Pushes that bump nothing
-publish nothing, so the job is safe to run on every one of them.
+on the registry and force-moves the `v1` tag that consumers pin. Pushes that
+bump nothing publish nothing, so the job is safe to run on every one of them.
 
-Publishing stores no credential. Each package has a **trusted publisher** on
-npmjs.com pointing at `self-ci.yml` in this repo, and CI trades a GitHub OIDC
-token for a short-lived npm one at publish time. The alternative — a granular
-token with "bypass 2FA" — is a long-lived secret that can write the whole
-`@hogasi` scope, and npm warns against it for CI for that reason.
+Publishing stores no credential: GitHub Packages accepts the workflow's own
+`GITHUB_TOKEN`, so there is no registry account and no secret to rotate.
 
 The release job runs only for pushes to `main`, and only after Build & tests,
 Workflow lint, Secret scan and Renovate config pass for that commit. Dependency

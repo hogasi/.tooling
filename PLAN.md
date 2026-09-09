@@ -65,17 +65,12 @@ freed the name.
    the workflow's own `GITHUB_TOKEN`, so there is no registry account, no secret
    and no trusted publisher to set up.
 
-3. **Log in to npm and claim the scope.** The scope cannot be renamed later, so
-   do this before any `package.json` is written. There is no CLI for creating an
-   org; `npm org` only manages members. Create it in the browser at
-   https://www.npmjs.com/org/create (free, public packages). The `hogasi`
-   username is unclaimed on the registry.
-   ```sh
-   npm login
-   ```
-   Note: the `npm` shell alias in zsh is broken
-   (`command not found: _block_mgr`); use the binary directly or fix the shell
-   function first.
+3. **Keep the `hogasi` org on npmjs, empty.** Packages ship to GitHub Packages,
+   but they are still named `@hogasi/*`. Holding the scope on the public
+   registry stops anyone else claiming it, so a repo with a broken `.npmrc`
+   falls back to nothing rather than to a stranger's code. Note: the `npm` shell
+   alias in zsh is broken (`command not found: _block_mgr`); use the binary
+   directly or fix the shell function first.
 4. **UI-only settings** — no API for these:
    - Org → Settings → Authentication security → **Require two-factor
      authentication**. Your own account must have 2FA on first, or you get
@@ -116,16 +111,19 @@ Three deviations from the sketch above, each deliberate:
   reads the checked-out repo's `.nvmrc` and fails loudly if there is neither an
   input nor a file. A hardcoded default in the shared action would silently
   drift from the version each repo actually develops against.
-- **No `NPM_TOKEN`.** Releases publish over npm trusted publishing (OIDC), so no
-  long-lived registry credential exists anywhere. A granular token with "bypass
-  2FA" would be simpler to set up and is what npm explicitly warns against for
-  CI: it can write the whole `@hogasi` scope and never expires until it does.
-  The first publish of each package is still manual, because a trusted publisher
-  can only attach to a package that already exists. This failed on the first
-  attempt for two reasons now removed: `release.yml` was a reusable workflow, so
-  npm saw a different workflow file in the claim than the one configured, and
-  `changeset publish` captured pnpm's output, so the `Skipped OIDC` warning
-  never reached the log and the only visible symptom was an anonymous `E404`.
+- **GitHub Packages, not npmjs.** These packages exist only for repos in this
+  org, and GitHub Packages ties them to the org's own permissions: the
+  workflow's `GITHUB_TOKEN` is the credential, so there is no registry account,
+  no stored secret and no trusted publisher. The price is paid by consumers
+  instead — GitHub Packages demands authentication to install even public
+  packages, so every repo needs an `.npmrc` and every developer a
+  `read:packages` token. Provenance attestation is npmjs-only and is lost. npmjs
+  came first and reached 0.2.0 there over OIDC before being unpublished. That
+  attempt failed twice for reasons both since removed: `release.yml` was a
+  reusable workflow, so npm saw a different workflow file in the OIDC claim than
+  the one configured, and `changeset publish` captured pnpm's output, so its
+  `Skipped OIDC` warning never reached the log and the only visible symptom was
+  an anonymous `E404`.
 - **No changesets.** Versions are bumped by hand with `pnpm bump`, and
   `pnpm -r publish` skips whatever is already on the registry. Changesets bought
   generated changelogs and a release PR, and charged a bot PR, a merge that
