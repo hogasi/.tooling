@@ -1,6 +1,7 @@
 /* eslint-disable security/detect-non-literal-fs-filename -- Paths are fixed names under RUNNER_TEMP, runner event paths, or bundled prompt URLs; no repository content supplies paths. */
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   beginPullRequestReview,
@@ -115,7 +116,15 @@ function preparePlan(event) {
     directory: environment.REVIEW_REPOSITORY,
     sha: context.sha
   });
-  return { ...review, files };
+  const pullRequests = review.snapshot.pulls.map((pull) => ({
+    ...pull,
+    ...pullRequestSnapshot({
+      base: pull.base,
+      directory: environment.REVIEW_REPOSITORY,
+      head: pull.head
+    })
+  }));
+  return { ...review, files, pullRequests, tooling: toolingSnapshot() };
 }
 function preparePullRequest(event) {
   const source = reviewSource(event);
@@ -162,4 +171,28 @@ function stackSource(event) {
     throw new Error("Stale or invalid stack review event");
   }
   return source.pull;
+}
+
+function toolingSnapshot() {
+  const paths = [
+    ".github/workflows/ai.yml",
+    "agents/delivery-run.mjs",
+    "agents/delivery.mjs",
+    "agents/delivery-scope.mjs",
+    "agents/parent-integration.mjs",
+    "agents/stack-target.mjs",
+    "agents/delivery-evidence.mjs",
+    "agents/stack.mjs",
+    "agents/stack-refresh.mjs",
+    "agents/planning.mjs"
+  ];
+  const files = repositorySnapshot({
+    directory: fileURLToPath(new URL("..", import.meta.url)),
+    paths,
+    sha: environment.TOOLING_SHA
+  });
+  if (files.length !== paths.length) {
+    throw new Error("Pinned tooling snapshot is incomplete");
+  }
+  return { files, sha: environment.TOOLING_SHA };
 }

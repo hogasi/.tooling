@@ -151,7 +151,8 @@
         "functions": [
           "pullRequestIssue",
           "routePullRequest",
-          "isImplementationPull"
+          "isImplementationPull",
+          "pulls"
         ],
         "maxCrap": 57,
         "reason": "Estimated CRAP does not measure node:test coverage. route.test.mjs and pr-review.test.mjs exercise the shared eligibility policy through routing and live publication checks. Keep cyclomatic and cognitive limits unchanged."

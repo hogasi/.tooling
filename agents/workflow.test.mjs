@@ -278,7 +278,10 @@ test("PR reviews use the same subscription queue and only the reviewer credentia
     /CLAUDE_CODE|AI_APP_PRIVATE_KEY|cancel-in-progress/
   );
   assert.match(codexWorkflow, /permission-actions: read/);
-  assert.match(codexWorkflow, /permission-pull-requests:.*inputs.mode == 'pr'/);
+  assert.match(
+    codexWorkflow,
+    /permission-pull-requests:\s*\$\{\{ inputs.mode == 'pr' && 'write' \|\| 'read' \}\}/
+  );
 });
 test("a duplicate PR review does not restore or spend the subscription login", () => {
   const auth = codexWorkflow

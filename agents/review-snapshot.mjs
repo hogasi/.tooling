@@ -35,7 +35,7 @@ export function pullRequestSnapshot({ base, directory, head }) {
 /**
 Read committed blobs without checking out files, following symlinks, or running hooks.
 */
-export function repositorySnapshot({ directory, sha }) {
+export function repositorySnapshot({ directory, paths = [], sha }) {
   if (!/^[a-f0-9]{40}$/.test(sha)) {
     throw new Error("Invalid snapshot SHA");
   }
@@ -43,7 +43,7 @@ export function repositorySnapshot({ directory, sha }) {
     execFileSync("git", ["-C", directory, ...args], {
       maxBuffer: MAX_INPUT_BYTES
     });
-  const entries = git(["ls-tree", "-rz", sha])
+  const entries = git(["ls-tree", "-rz", sha, "--", ...paths])
     .toString("utf8")
     .split("\0")
     .filter(Boolean);

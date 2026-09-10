@@ -1,5 +1,6 @@
 import { verifyInheritance } from "./delivery-scope.mjs";
 import { githubRequest } from "./github.mjs";
+import { planningPulls, verifyPlanningPulls } from "./plan-evidence.mjs";
 import { latestComment, readComments, readProposal } from "./proposal.mjs";
 import { setStatus } from "./state.mjs";
 
@@ -23,6 +24,7 @@ export function beginReview(context, callGitHub = githubRequest) {
   const snapshot = {
     digest: proposal.digest,
     proposal: proposal.id,
+    pulls: planningPulls(context, { issue, proposal }, callGitHub),
     run: `${context.runId}.${context.attempt}`,
     sha: context.sha
   };
@@ -43,15 +45,10 @@ Publish only if the proposal and repository still match the reviewed snapshot.
 export function publishReview(context, callGitHub = githubRequest) {
   validateContext(context);
   const verdict = validateVerdict(context.verdict);
-  verifyInheritance(context, readReadyIssue(context, callGitHub), callGitHub);
+  const issue = readReadyIssue(context, callGitHub);
   const { snapshot } = context;
   const proposal = readProposal(context, callGitHub);
-  if (
-    proposal.digest !== snapshot.digest ||
-    currentSha(context, callGitHub) !== snapshot.sha
-  ) {
-    throw new Error("Review input changed during execution; reapply in review");
-  }
+  requireCurrentPlanInput(context, { issue, proposal }, callGitHub);
   if (requirePendingReview(context, callGitHub) !== "pending") {
     return;
   }
@@ -204,6 +201,21 @@ function requireConsistentVerdict(value) {
     throw new Error("Inconsistent review verdict");
   }
 }
+function requireCurrentPlanInput(context, { issue, proposal }, callGitHub) {
+  const { snapshot } = context;
+  verifyInheritance(context, issue, callGitHub);
+  verifyPlanningPulls(
+    context,
+    { issue, proposal, pulls: snapshot.pulls },
+    callGitHub
+  );
+  if (
+    proposal.digest !== snapshot.digest ||
+    currentSha(context, callGitHub) !== snapshot.sha
+  ) {
+    throw new Error("Review input changed during execution; reapply in review");
+  }
+}
 function requirePendingReview(context, callGitHub) {
   const latest = latestRecord(context, callGitHub);
   const { snapshot } = context;
@@ -225,6 +237,7 @@ function validateContext(context) {
     throw new Error("Invalid review context");
   }
 }
+
 function validateRecord(line, record) {
   if (
     !line.endsWith(" -->") ||

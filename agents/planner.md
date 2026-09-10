@@ -67,6 +67,11 @@ Use these sections:
 - Revision rationale: what changed from the previous checkpoint and why; link
   the previous revision and relevant discussion. For a first revision, say so.
 
+Plan review receives relevant open App PR snapshots from this issue's native
+parent/child/dependency links, plus the pinned tooling's delivery
+implementation. Cite PRs, commits and files instead of copying source code into
+the checkpoint.
+
 A checkpoint is a complete review submission, not an update after every
 exchange. If the current checkpoint is unchanged, return its body exactly so the
 publisher reuses it. Otherwise return a replacement with the revision rationale
