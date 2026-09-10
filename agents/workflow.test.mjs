@@ -327,7 +327,8 @@ test("the planner model reads only and trusted publication completes before the 
     model,
     /github_token: \$\{\{ steps.reader-token.outputs.token \}\}/
   );
-  assert.doesNotMatch(reader, /permission-\w+: write/);
+  assert.match(reader, /permission-pull-requests: read/);
+  assert.doesNotMatch(reader, /permission-[\w-]+: write/);
   assert.match(model, /--json-schema/);
   assert.match(
     planner,

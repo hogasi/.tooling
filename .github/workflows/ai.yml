@@ -368,6 +368,7 @@ jobs:
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
           permission-contents: read
           permission-issues: read
+          permission-pull-requests: read
           permission-actions: read
           permission-metadata: read
 
