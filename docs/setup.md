@@ -82,16 +82,17 @@ in step 4 has been applied or verified against GitHub.
    - Create the `hogasi-ai` GitHub App with webhook **off**. Grant contents,
      pull requests, and issues read/write, plus metadata, actions and
      administration read — actions read is how a repair reads its own failing
-     check logs, and administration read is how the approval job reads back the
-     repository permission of the actor recording, clearing, or verifying
-     approval, including the recheck after an implementation leaves its queue.
-     If that lookup is refused the approval fails rather than being assumed;
-     phase A should confirm the grant is sufficient. Install on enrolled
-     repositories; store its key and **client id** as organization Actions
-     secrets `AI_APP_PRIVATE_KEY` and `AI_APP_ID` — the workflow passes that
-     secret to `create-github-app-token`'s `client-id`, because its `app-id`
-     input is deprecated. Grant both secrets to each enrolled repo. The workflow
-     mints a token per job, scoped to that job's permissions.
+     check logs, and administration read is how the route job reads back the
+     sender's repository permission before admitting an event, and the approval
+     job that of the actor recording, clearing, or verifying approval, including
+     the recheck after an implementation leaves its queue. If that lookup is
+     refused the approval fails rather than being assumed; phase A should
+     confirm the grant is sufficient. Install on enrolled repositories; store
+     its key and **client id** as organization Actions secrets
+     `AI_APP_PRIVATE_KEY` and `AI_APP_ID` — the workflow passes that secret to
+     `create-github-app-token`'s `client-id`, because its `app-id` input is
+     deprecated. Grant both secrets to each enrolled repo. The workflow mints a
+     token per job, scoped to that job's permissions.
    - Add the thin AI caller below, explicitly forwarding the three named
      secrets, and provision `ready` and `approved` labels. Add
      [review-guidelines.md](../agents/review-guidelines.md) to the consumer's

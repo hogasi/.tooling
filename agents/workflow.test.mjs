@@ -86,3 +86,16 @@ test("approval checks out its code and exposes the verified digest", () => {
   assert.match(approval, /ref: \$\{\{ job.workflow_sha \}\}/);
   assert.equal((job("route").match(/\n {4}outputs:/g) ?? []).length, 1);
 });
+
+test("routing reads the sender's real permission before deciding", () => {
+  const route = job("route");
+  const lookup = route.indexOf("collaborators/${SENDER}/permission");
+  const decision = route.indexOf("run: node _tooling/agents/route.mjs");
+
+  assert.ok(lookup > 0, "The route job never reads the sender's permission");
+  assert.ok(lookup < decision);
+  assert.match(
+    route,
+    /EVENT_SENDER_PERMISSION: \$\{\{ steps.sender.outputs.permission \}\}/
+  );
+});
