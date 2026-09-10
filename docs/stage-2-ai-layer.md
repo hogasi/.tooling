@@ -179,11 +179,15 @@ thread, publishes questions as comments, and maintains the proposal in the issue
 body. Discovery covers only material decisions needed to implement and verify
 the issue; direct investigation is the default and delegation is optional. When
 no material decisions remain, publish the complete proposal and mark it `ready`.
-There is no additional confirmation round: the owner applies `approved` to
-authorize implementation. Revision-specific approval remains a workflow control
-outside the model. Verify in the sandbox that a fresh run retains prior answers
-and that neither the upstream skill nor the planner starts implementation before
-approval.
+Until then the body stops after the decisions recorded so far: a scope and a
+plan written on the planner's own recommended answers read as settled and anchor
+the owner to choices they never made. Each decision records where it was settled
+— the owner's comment, or the file that answered it — so the proposal stays
+traceable to the exchange behind it. There is no additional confirmation round:
+the owner applies `approved` to authorize implementation. Revision-specific
+approval remains a workflow control outside the model. Verify in the sandbox
+that a fresh run retains prior answers and that neither the upstream skill nor
+the planner starts implementation before approval.
 
 ## Approval and event routing
 
