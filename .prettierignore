@@ -6,3 +6,4 @@ packages/*/tmp-fixture-*/
 
 # Vendored upstream, kept byte-for-byte so it can be diffed against its commit.
 agents/skills/
+agents/vendor/

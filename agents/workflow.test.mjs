@@ -118,3 +118,12 @@ for (const role of ["plan", "implement"]) {
     assert.match(steps.slice(outcome), /if: always\(\)/);
   });
 }
+
+for (const role of ["plan", "implement"]) {
+  test(`the ${role} job installs the coding style as user memory`, () => {
+    assert.match(
+      job(role),
+      /cp "\$\{RUNNER_TEMP}\/tooling\/agents\/vendor\/coding-style\.md" "\$\{HOME}\/\.claude\/CLAUDE\.md"/
+    );
+  });
+}

@@ -242,6 +242,17 @@ jobs:
           mkdir -p "${HOME}/.claude/skills"
           cp -R "${RUNNER_TEMP}/tooling/agents/skills/grilling" "${HOME}/.claude/skills/grilling"
 
+      # Vendored from silviuhogasi/.ai at commit
+      # 6b5066167dc699d3392e1a87dcc110190538ad80
+      # (general/coding-style/AGENTS.md). Claude Code reads this as user memory,
+      # which is how one persona reaches every enrolled repository without being
+      # pasted into a prompt. A vendored copy drifts until someone re-pins it.
+      - name: Install the coding style
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.claude"
+          cp "${RUNNER_TEMP}/tooling/agents/vendor/coding-style.md" "${HOME}/.claude/CLAUDE.md"
+
       # No contents write and no pull request access: the planner cannot start
       # implementing even if it decides to. That is a credential, not a rule in
       # a prompt.
@@ -358,6 +369,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      # Vendored from silviuhogasi/.ai at commit
+      # 6b5066167dc699d3392e1a87dcc110190538ad80
+      # (general/coding-style/AGENTS.md). Claude Code reads this as user memory,
+      # which is how one persona reaches every enrolled repository without being
+      # pasted into a prompt. A vendored copy drifts until someone re-pins it.
+      - name: Install the coding style
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.claude"
+          cp "${RUNNER_TEMP}/tooling/agents/vendor/coding-style.md" "${HOME}/.claude/CLAUDE.md"
 
       - name: Build the implementer prompt
         id: prompt
