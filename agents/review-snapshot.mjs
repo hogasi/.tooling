@@ -35,7 +35,12 @@ export function pullRequestSnapshot({ base, directory, head }) {
 /**
 Read committed blobs without checking out files, following symlinks, or running hooks.
 */
-export function repositorySnapshot({ directory, paths = [], sha }) {
+export function repositorySnapshot({
+  directory,
+  include = () => true,
+  paths = [],
+  sha
+}) {
   if (!/^[a-f0-9]{40}$/.test(sha)) {
     throw new Error("Invalid snapshot SHA");
   }
@@ -46,7 +51,8 @@ export function repositorySnapshot({ directory, paths = [], sha }) {
   const entries = git(["ls-tree", "-rz", sha, "--", ...paths])
     .toString("utf8")
     .split("\0")
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((entry) => include(entry.slice(entry.indexOf("\t") + 1)));
   const files = entries.map((entry) => readBlob(entry, git));
   requireInputSize(JSON.stringify(files));
   return files;
