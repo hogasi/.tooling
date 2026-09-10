@@ -266,6 +266,8 @@ jobs:
           {
             printf 'text<<%s\n' "$delimiter"
             cat "${RUNNER_TEMP}/tooling/agents/planner.md"
+            printf '\n'
+            cat "${RUNNER_TEMP}/tooling/agents/voice.md"
             printf '\n## This run\n\n- Repository: %s\n- Issue: #%s\n- Model: %s at %s effort\n' \
               "$GITHUB_REPOSITORY" "$ISSUE" "$MODEL" "$EFFORT"
             printf '%s\n' "$delimiter"
@@ -335,6 +337,8 @@ jobs:
           {
             printf 'text<<%s\n' "$delimiter"
             cat "${RUNNER_TEMP}/tooling/agents/implementer.md"
+            printf '\n'
+            cat "${RUNNER_TEMP}/tooling/agents/voice.md"
             printf '\n## This run\n\n- Repository: %s\n- Issue: #%s\n- Branch: claude/issue-%s\n- Model: %s at %s effort\n' \
               "$GITHUB_REPOSITORY" "$ISSUE" "$ISSUE" "$MODEL" "$EFFORT"
             printf '%s\n' "$delimiter"
