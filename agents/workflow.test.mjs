@@ -32,7 +32,6 @@ test("subscription persistence uses only the environment's reviewer App", () => 
     assert.ok(declarations.includes(`${secret}:`));
   }
   assert.equal(declarations.match(/required: false/g)?.length, 3);
-  assert.doesNotMatch(workflow, /AI_REVIEW_APP_/);
 });
 
 test("subscription jobs serialize without replacing waiting reviews", () => {
@@ -75,9 +74,13 @@ test("the subscription smoke test pins Astra medium and never loads consumer cod
 const job = (name) =>
   workflow.split(`\n  ${name}:\n`)[1].split(/\n {2}[a-z-]+:\n/, 1)[0];
 const condition = (name) =>
-  job(name)
-    .match(/\n {4}if:\n([\s\S]*?)\n {4}runs-on:/)[1]
-    .trim();
+  name === "plan-review"
+    ? job(name)
+        .match(/if:\n([\s\S]*?)\n {4}uses:/)[1]
+        .trim()
+    : job(name)
+        .match(/\n {4}if:\n([\s\S]*?)\n {4}runs-on:/)[1]
+        .trim();
 const jobFor = {
   "implementer": "implement",
   "plan-reviewer": "plan-review",
@@ -173,13 +176,13 @@ test("routing reads the sender's real permission before deciding", () => {
   );
 });
 
-for (const role of ["plan", "plan-review", "implement"]) {
+for (const role of ["plan", "implement"]) {
   test(`the ${role} job grants the GitHub tools agent mode installs on demand`, () => {
     assert.match(job(role), /--allowedTools\n\s+'mcp__github__\*'/);
   });
 }
 
-for (const role of ["plan", "plan-review", "implement"]) {
+for (const role of ["plan", "implement"]) {
   test(`the ${role} job marks the thread before the model starts and after it ends`, () => {
     const steps = job(role);
     const started = steps.indexOf('reaction.sh" start');
@@ -197,7 +200,7 @@ for (const role of ["plan", "plan-review", "implement"]) {
   });
 }
 
-for (const role of ["plan", "plan-review", "implement"]) {
+for (const role of ["plan", "implement"]) {
   test(`the ${role} job installs the coding style as user memory`, () => {
     assert.match(
       job(role),
@@ -213,26 +216,38 @@ test("review can start without an approval job", () => {
   );
 });
 
-test("a stale pass is retracted before the plan reviewer runs", () => {
+test("plan review uses the shared subscription queue without Claude credentials", () => {
   const review = job("plan-review");
-  const retract = review.indexOf("labels/reviewed");
-  const action = review.indexOf("uses: anthropics/claude-code-action@");
-
-  assert.ok(
-    retract > 0,
-    "The plan review job never retracts the reviewed label"
+  assert.match(review, /uses: \.\/.github\/workflows\/codex-review.yml/);
+  assert.doesNotMatch(
+    review,
+    /CLAUDE_CODE|AI_APP_PRIVATE_KEY|cancel-in-progress/
   );
-  assert.ok(retract < action);
-  assert.match(review, /--method DELETE/);
+  assert.match(codexWorkflow, /permission-contents: read/);
+  assert.doesNotMatch(
+    codexWorkflow,
+    /permission-contents: write|permission-pull-requests: write/
+  );
 });
 
-test("the plan reviewer cannot write code or open a pull request", () => {
-  const review = job("plan-review");
-
-  assert.match(review, /permission-contents: read/);
-  assert.match(review, /permission-issues: write/);
-  assert.doesNotMatch(review, /permission-contents: write/);
-  assert.doesNotMatch(review, /permission-pull-requests: write/);
+test("the model cannot execute repository scripts or receive GitHub write tokens", () => {
+  const model = codexWorkflow
+    .split("name: Review the proposal with Astra", 2)[1]
+    .split("# Mint this only after", 1)[0];
+  assert.match(
+    model,
+    /--disable shell_tool --disable unified_exec --disable hooks/
+  );
+  assert.match(model, /--output-schema/);
+  assert.doesNotMatch(model, /GH_TOKEN|AI_REVIEW_APP_PRIVATE_KEY/);
+  assert.ok(
+    codexWorkflow.indexOf("review-run.mjs prepare") <
+      codexWorkflow.indexOf("name: Review the proposal")
+  );
+  assert.ok(
+    codexWorkflow.indexOf("codex-auth.mjs clear") <
+      codexWorkflow.indexOf("review-run.mjs publish")
+  );
 });
 
 test("routing knows the App's own login so the planner can ask for review", () => {

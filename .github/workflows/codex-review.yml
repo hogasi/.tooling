@@ -1,7 +1,20 @@
-name: Codex subscription check
+name: Codex review
 
 on:
   workflow_call:
+    inputs:
+      mode:
+        type: string
+        default: smoke
+      issue:
+        type: string
+        default: ""
+      model:
+        type: string
+        default: gpt-6-astra
+      effort:
+        type: string
+        default: medium
     # Explicit caller mappings are required to resolve these environment secrets.
     secrets:
       CODEX_AUTH_JSON:
@@ -20,7 +33,7 @@ jobs:
       github.event.repository.private == true && github.ref ==
       format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     environment: codex-review
     concurrency:
       # silviu: one consumer per login; centralize execution before sharing it across repos.
@@ -44,6 +57,54 @@ jobs:
       - name: Install the pinned Codex CLI
         run: npm install --global @openai/codex@0.154.0
 
+      - name: Validate review settings
+        env:
+          REVIEW_MODE: ${{ inputs.mode }}
+          AI_PLAN_REVIEWER_MODEL: ${{ inputs.model }}
+          AI_PLAN_REVIEWER_EFFORT: ${{ inputs.effort }}
+        run: |
+          node --input-type=module -e '
+            import { settingsFor } from "./_tooling/agents/route.mjs";
+            settingsFor("plan-reviewer", process.env);
+            if (!["smoke", "plan"].includes(process.env.REVIEW_MODE)) throw new Error("Invalid review mode");
+          '
+
+      - uses: actions/checkout@v7
+        if: inputs.mode == 'plan'
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          path: _consumer
+
+      - uses: actions/create-github-app-token@v3.2.0
+        id: review-token
+        if: inputs.mode == 'plan'
+        with:
+          client-id: ${{ secrets.AI_REVIEW_APP_ID }}
+          private-key: ${{ secrets.AI_REVIEW_APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-issues: write
+          permission-metadata: read
+
+      - name: Capture the proposal and retract its previous pass
+        id: prepare
+        if: inputs.mode == 'plan'
+        env:
+          GH_TOKEN: ${{ steps.review-token.outputs.token }}
+          ISSUE: ${{ inputs.issue }}
+          REVIEWER_LOGIN: ${{ steps.review-token.outputs.app-slug }}[bot]
+          REVIEW_REPOSITORY: ${{ github.workspace }}/_consumer
+        run: node _tooling/agents/review-run.mjs prepare
+
+      - name: React to show the review started
+        id: reaction
+        if: inputs.mode == 'plan'
+        env:
+          GH_TOKEN: ${{ steps.review-token.outputs.token }}
+          TARGET: issues/${{ inputs.issue }}
+        run: bash _tooling/agents/reaction.sh start
+
       - name: Restore the subscription login
         id: auth
         env:
@@ -52,6 +113,7 @@ jobs:
 
       - name: Check Astra medium access
         id: codex
+        if: inputs.mode == 'smoke'
         env:
           CODEX_HOME: ${{ runner.temp }}/codex-review-auth
         run: |
@@ -64,6 +126,28 @@ jobs:
             --output-last-message "${RUNNER_TEMP}/codex-smoke-result" \
             'Do not use tools. Reply with exactly OK.' >/dev/null 2>/dev/null
           test "$(cat "${RUNNER_TEMP}/codex-smoke-result")" = OK
+
+      - name: Review the proposal with Astra
+        id: plan-review
+        if: inputs.mode == 'plan'
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-review-auth
+          MODEL: ${{ inputs.model }}
+          EFFORT: ${{ inputs.effort }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/codex-plan"
+          cd "${RUNNER_TEMP}/codex-plan"
+          codex exec --ignore-user-config --ignore-rules --ephemeral \
+            --skip-git-repo-check --sandbox read-only \
+            --disable shell_tool --disable unified_exec --disable hooks \
+            --disable apps --disable browser_use --disable computer_use \
+            --disable image_generation --disable view_image --disable multi_agent \
+            --disable skill_search -c 'web_search="disabled"' \
+            --model "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" \
+            --output-schema "${GITHUB_WORKSPACE}/_tooling/agents/review.schema.json" \
+            --output-last-message "${RUNNER_TEMP}/plan-review-result.json" \
+            - < "${RUNNER_TEMP}/plan-review-prompt.txt" >/dev/null 2>/dev/null
 
       # Mint this only after Codex exits; the model never receives update authority.
       - uses: actions/create-github-app-token@v3.2.0
@@ -87,12 +171,32 @@ jobs:
         if: always()
         run: node _tooling/agents/codex-auth.mjs clear
 
+      - name: Publish the current verdict
+        if: inputs.mode == 'plan'
+        env:
+          GH_TOKEN: ${{ steps.review-token.outputs.token }}
+          ISSUE: ${{ inputs.issue }}
+          REVIEWER_LOGIN: ${{ steps.review-token.outputs.app-slug }}[bot]
+        run: node _tooling/agents/review-run.mjs publish
+
+      - name: Replace the reaction with the outcome
+        if: always() && steps.reaction.outputs.target != ''
+        env:
+          GH_TOKEN: ${{ steps.review-token.outputs.token }}
+          OUTCOME: ${{ job.status }}
+          REACTION: ${{ steps.reaction.outputs.id }}
+          TARGET: ${{ steps.reaction.outputs.target }}
+        run: bash _tooling/agents/reaction.sh finish
+
       - name: Report the subscription check
         if: always()
         env:
           OUTCOME: ${{ job.status }}
+          MODE: ${{ inputs.mode }}
+          MODEL: ${{ inputs.model }}
+          EFFORT: ${{ inputs.effort }}
         run: |
-          printf 'Astra medium subscription check: %s\n' "$OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Codex %s run (%s, %s): %s\n' "$MODE" "$MODEL" "$EFFORT" "$OUTCOME" >> "$GITHUB_STEP_SUMMARY"
           if [ "$OUTCOME" != success ]; then
-            echo '::error::Subscription check failed. Check account/model access and environment write permission; reseed the login if persistence failed. No API fallback was used.'
+            echo '::error::Codex run failed. Inspect the failed step; fix stale inputs or account access before retrying. Reseed the login if persistence failed. No API fallback was used.'
           fi

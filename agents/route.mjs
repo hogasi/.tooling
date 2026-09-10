@@ -53,8 +53,8 @@ const unquoted = (body) =>
  * whoever triggered the event. On a label event the issue's association is the
  * opener's, so trusting it would deny an owner approving an outside
  * contributor's issue and admit the reverse. The association is used only when
- * it describes the sender; labelling is instead authorised in the approval job,
- * which has a token that can read the labeller's real repository permission.
+ * it describes the sender; labelling uses the sender's real repository permission
+ * read by the route job, then checked again for approval operations.
  *
  * The association is also a social label rather than a grant: MEMBER says only
  * that the sender belongs to the org, and COLLABORATOR that they are listed on
@@ -81,10 +81,17 @@ const associationAuthority = ({
     : `${senderLogin} has no write relationship with this repository`;
 };
 
-const labelAuthority = ({ action, eventName, senderLogin }) =>
-  eventName === "issues" && action === "labeled"
+const labelAuthority = ({
+  action,
+  eventName,
+  senderLogin,
+  senderPermission
+}) =>
+  eventName === "issues" &&
+  action === "labeled" &&
+  WRITE_PERMISSIONS.has(senderPermission)
     ? ""
-    : `this event carries no author_association for ${senderLogin}`;
+    : `this event does not establish write authority for ${senderLogin}`;
 
 const senderAuthority = (event) =>
   event.senderLogin === event.associationSubject
@@ -326,14 +333,6 @@ const ROLE_SETTINGS = new Map([
     })
   ],
   [
-    "plan-reviewer",
-    (environment) => ({
-      defaultModel: environment.AI_DEFAULT_PLAN_REVIEWER_MODEL,
-      effort: environment.AI_PLAN_REVIEWER_EFFORT,
-      model: environment.AI_PLAN_REVIEWER_MODEL
-    })
-  ],
-  [
     "planner",
     (environment) => ({
       defaultModel: environment.AI_DEFAULT_PLANNER_MODEL,
@@ -349,6 +348,9 @@ const ROLE_SETTINGS = new Map([
  * whatever shipped with the version of the workflow it pinned.
  */
 export function settingsFor(role, environment) {
+  if (role === "plan-reviewer") {
+    return reviewSettings(environment);
+  }
   const read = ROLE_SETTINGS.get(role);
 
   if (!read) {
@@ -381,6 +383,20 @@ function main() {
       .map(([key, value]) => `${key}=${value}\n`)
       .join("")
   );
+}
+
+/**
+Keep the subscription pilot on the verified model and supported review efforts.
+*/
+function reviewSettings(environment) {
+  const model = selected(environment.AI_PLAN_REVIEWER_MODEL, "gpt-6-astra");
+  const effort = selected(environment.AI_PLAN_REVIEWER_EFFORT, "medium");
+  if (model !== "gpt-6-astra" || !["low", "medium"].includes(effort)) {
+    throw new Error(
+      "Unsupported Codex review settings; use gpt-6-astra with low or medium effort"
+    );
+  }
+  return { effort, model };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

@@ -20,6 +20,7 @@ const context = {
   issueNumber: "7",
   mode: "verify",
   repository: "hogasi/sandbox",
+  reviewerLogin: "hogasi-review[bot]",
   runId: "123",
   runUrl: "https://github.com/hogasi/sandbox/actions/runs/123"
 };
@@ -38,19 +39,35 @@ function fixture(overrides = {}) {
     ...overrides
   };
   const writes = [];
-  const request = ({ body: payload, method = "GET", paginate, path }) => {
-    if (method !== "GET") {
-      writes.push({ body: payload, method, path });
+  const reviewRecords = state.reviewRecords ?? [
+    {
+      body: `<!-- hogasi-review plan ${JSON.stringify({ digest: digestOf(state.issue.body), run: "100.1", sha: "a".repeat(40), status: "pass" })} -->`,
+      id: 900,
+      user: { login: context.reviewerLogin }
+    }
+  ];
+  const reads = new Map([
+    ["repos/hogasi/sandbox", () => ({ default_branch: "main" })],
+    [
+      "repos/hogasi/sandbox/collaborators/owner/permission",
+      () => ({ permission: state.permission })
+    ],
+    ["repos/hogasi/sandbox/commits/main", () => ({ sha: "a".repeat(40) })],
+    ["repos/hogasi/sandbox/issues/7", () => state.issue],
+    [
+      "repos/hogasi/sandbox/issues/7/comments",
+      ({ paginate }) => {
+        assert.equal(paginate, true);
+        return [...state.pages, reviewRecords];
+      }
+    ]
+  ]);
+  const request = (options) => {
+    if (options.method && options.method !== "GET") {
+      writes.push(options);
       return {};
     }
-    if (path.endsWith("/permission")) {
-      return { permission: state.permission };
-    }
-    if (path.endsWith("/comments")) {
-      assert.equal(paginate, true);
-      return state.pages;
-    }
-    return state.issue;
+    return reads.get(options.path)(options);
   };
   return { request, writes };
 }
@@ -264,7 +281,10 @@ test("malformed paginated comments fail closed", () => {
 });
 
 test("malformed issue data fails closed", () => {
-  const { request } = fixture({ issue: { ...issue, body: 42 } });
+  const { request } = fixture({
+    issue: { ...issue, body: 42 },
+    reviewRecords: []
+  });
   assert.throws(() => applyApproval(context, request), /issue/);
 });
 
@@ -277,3 +297,14 @@ test("invalid repository paths are rejected before GitHub is called", () => {
     /repository/
   );
 });
+
+for (const mode of ["record", "verify"]) {
+  test(`${mode} rejects forged reviewed labels without a reviewer record`, () => {
+    const { request, writes } = fixture({ reviewRecords: [] });
+    assert.throws(
+      () => applyApproval({ ...context, mode }, request),
+      /current passing/
+    );
+    assert.equal(writes.length, 0);
+  });
+}

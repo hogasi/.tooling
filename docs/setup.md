@@ -69,24 +69,19 @@ in step 4 has been applied or verified against GitHub.
      `planner,plan-reviewer,implementer` once approval and CI are proven. Unset
      means disabled. An org variable can supply a shared value; repository
      overrides take precedence, so clearing the org value is not a global stop.
-   - Claude model defaults belong in `.tooling/.github/workflows/ai.yml`:
-     planner `fable`, plan reviewer `opus`, implementer `opus`, effort `high`.
-     Only create `AI_PLANNER_MODEL`, `AI_PLAN_REVIEWER_MODEL`,
-     `AI_IMPLEMENTER_MODEL`, `AI_PLANNER_EFFORT`, `AI_PLAN_REVIEWER_EFFORT`, or
-     `AI_IMPLEMENTER_EFFORT` Actions variables when overriding those defaults.
-     Variables on the tooling repository alone do not configure consumers.
-   - The approved replacement is Astra medium for both reviews, using the Codex
-     subscription in GitHub-hosted Actions. Start with the subscription check
-     below. The existing Claude plan reviewer and hosted PR-review route remain
-     in place until this check passes and the replacement is implemented. Do not
-     enable both PR-review routes together.
-   - For the existing hosted route, connect each enrolled repo in Codex settings
-     and enable automatic reviews. Verify whether GPT-6 Astra can be selected
-     and record the actual model selection capability. Hosted review cannot be
-     configured by an `AI_PLAN_REVIEWER_MODEL` workflow variable. If exact Astra
-     selection is unavailable, obtain an explicit decision before adopting
-     another model or an API-backed reviewer. Verify App-authored PRs and
-     follow-up reviews.
+   - Claude defaults belong in `.tooling/.github/workflows/ai.yml`: planner
+     `fable`, implementer `opus`, effort `high`. Their model and effort Actions
+     variables override those defaults only in the consumer.
+   - Plan review now uses the subscription runner with `gpt-6-astra` and
+     `medium` reasoning. `agents/route.mjs` validates the consumer's
+     `AI_PLAN_REVIEWER_MODEL` and `AI_PLAN_REVIEWER_EFFORT`; the pilot accepts
+     only Astra and `low` or `medium`. Clear obsolete `opus` or `high` review
+     overrides before enrollment. PR review through this runner is still
+     pending; do not enable hosted reviews as a fallback.
+   - Complete the private-consumer subscription setup below before enabling
+     `plan-reviewer`. `AI_REVIEW_APP_LOGIN` defaults to `hogasi-review[bot]`;
+     set it in the consumer only if using a differently named reviewer App.
+     Approval trusts records from that login, never the `reviewed` label alone.
    - Create the `hogasi-ai` GitHub App with webhook **off**. Grant contents,
      pull requests, and issues read/write, plus metadata, actions and
      administration read — actions read is how a repair reads its own failing
@@ -101,8 +96,8 @@ in step 4 has been applied or verified against GitHub.
      `create-github-app-token`'s `client-id`, because its `app-id` input is
      deprecated. Grant both secrets to each enrolled repo. The workflow mints a
      token per job, scoped to that job's permissions.
-   - Add the thin AI caller below, explicitly forwarding the three named
-     secrets, and provision `ready`, `reviewed` and `ready for dev` labels. Add
+   - Add the thin AI caller below, explicitly mapping the six named secrets, and
+     provision `ready`, `reviewed` and `ready for dev` labels. Add
      [review-guidelines.md](../agents/review-guidelines.md) to the consumer's
      `AGENTS.md`. Complete this again for new repositories; copying a workflow
      does not grant secret access or connect Codex automatically.
@@ -119,7 +114,7 @@ in step 4 has been applied or verified against GitHub.
 
      jobs:
        ai:
-         uses: hogasi/.tooling/.github/workflows/ai.yml@v1
+         uses: hogasi/.tooling/.github/workflows/ai.yml@FULL_COMMIT_SHA
          # Everything Claude writes goes through the App token the reusable
          # workflow mints, so GITHUB_TOKEN only ever reads. A called workflow
          # cannot hold a permission its caller did not grant, so these are the
@@ -133,6 +128,9 @@ in step 4 has been applied or verified against GitHub.
            AI_APP_ID: ${{ secrets.AI_APP_ID }}
            AI_APP_PRIVATE_KEY: ${{ secrets.AI_APP_PRIVATE_KEY }}
            CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+           AI_REVIEW_APP_ID: ${{ secrets.AI_REVIEW_APP_ID }}
+           AI_REVIEW_APP_PRIVATE_KEY: ${{ secrets.AI_REVIEW_APP_PRIVATE_KEY }}
      ```
 
    - Keep CI required and independent of AI enablement. To stop Claude writes
@@ -238,9 +236,41 @@ produces a failed run and a short recovery message; it never falls back to the
 API. A hard runner termination can prevent persistence. If a login is lost or
 revoked, stop queued runs, reseed it and repeat this check.
 
-After this check passes, the remaining approved work is to replace Claude plan
-review, bind its verdict to the proposal revision, and add PR review for the
-exact diff and approved proposal. Both will share this serialized login flow.
+## Enable issue-plan review
+
+The plan-review route is implemented locally; its live verdict tests remain
+pending. After merging and pinning this version in the consumer AI caller:
+
+1. Explicitly map the three review secret names through the AI caller as shown
+   above. Keep their values only in the `codex-review` environment. Discovery
+   and implementation jobs never receive those credentials.
+2. Set `AI_ROLES=planner,plan-reviewer`; remove old Claude reviewer overrides.
+3. Exercise a deliberately defective proposal and verify findings remove `ready`
+   without applying `reviewed`. Correct it and reapply `ready` to check a
+   passing review, then owner approval.
+4. Edit a passed proposal and verify approval is rejected. Reapply `ready` to
+   obtain a review for the new body. A default-branch commit also invalidates
+   the old pass. Test a queued review whose proposal changes before completion.
+5. Enable `implementer` only after these checks pass. Existing label-only Claude
+   reviews need a fresh Astra pass before new implementation or repair runs.
+
+Plan reviews share the smoke test's subscription queue. The runner supplies the
+full thread and committed repository text as data, with shell, browser and
+execution tools disabled. It runs no repository scripts or dependency installs.
+The pilot rejects prompts over 512 KiB and repositories with submodules; binary
+files are listed as unavailable evidence. Add scoped read-only retrieval before
+enrolling larger repositories. Do not increase the limit without checking the
+model's context budget.
+
+A pending reviewer record and removal of `reviewed` precede model execution.
+Trusted code validates the JSON verdict and rechecks the proposal digest and
+repository SHA before publishing. Approval repeats these checks, including after
+the implementation queue. GitHub cannot atomically update comments and labels,
+so the authenticated record and current inputs are authoritative. A failed run
+stays unreviewed; inspect its Actions error and remove/reapply `ready` after
+fixing the cause. Credential persistence still runs after a model failure.
+Long-term token renewal and the actual review quality still need live
+validation. The next implementation step is the Astra PR-review route.
 
 Sources:
 [Codex account auth in CI](https://learn.chatgpt.com/docs/auth/ci-cd-auth),

@@ -223,12 +223,13 @@ test("an association describing someone other than the sender is not trusted", (
     ownerEvent({
       action: "edited",
       associationSubject: "a-stranger",
-      labels: ["ready", "reviewed", "ready for dev"]
+      labels: ["ready", "reviewed", "ready for dev"],
+      senderPermission: "admin"
     })
   );
 
   assert.equal(route.role, "");
-  assert.match(route.reason, /no author_association/);
+  assert.match(route.reason, /does not establish write authority/);
 });
 
 test("an owner may approve an outside contributor's issue", () => {
@@ -241,7 +242,8 @@ test("an owner may approve an outside contributor's issue", () => {
       associationSubject: "a-stranger",
       authorAssociation: "NONE",
       labelName: "ready for dev",
-      labels: ["ready", "reviewed", "ready for dev"]
+      labels: ["ready", "reviewed", "ready for dev"],
+      senderPermission: "admin"
     })
   );
 
@@ -574,9 +576,38 @@ test("the plan reviewer resolves its own model and effort", () => {
   assert.deepEqual(
     settingsFor("plan-reviewer", {
       AI_DEFAULT_EFFORT: "high",
-      AI_DEFAULT_PLAN_REVIEWER_MODEL: "opus",
-      AI_PLAN_REVIEWER_EFFORT: "max"
+      AI_PLAN_REVIEWER_EFFORT: "low"
     }),
-    { effort: "max", model: "opus" }
+    { effort: "low", model: "gpt-6-astra" }
   );
+});
+
+for (const overrides of [
+  { AI_PLAN_REVIEWER_MODEL: "opus" },
+  { AI_PLAN_REVIEWER_EFFORT: "high" },
+  { AI_PLAN_REVIEWER_MODEL: "gpt-6-astra\nmalicious" }
+]) {
+  test(`rejects unsupported review settings ${JSON.stringify(overrides)}`, () => {
+    assert.throws(
+      () => settingsFor("plan-reviewer", overrides),
+      /Unsupported Codex/
+    );
+  });
+}
+test("review defaults to Astra medium", () => {
+  assert.deepEqual(settingsFor("plan-reviewer", {}), {
+    effort: "medium",
+    model: "gpt-6-astra"
+  });
+});
+test("a reader cannot request review on another author's issue", () => {
+  const decision = resolveRoute(
+    ownerEvent({
+      action: "labeled",
+      labelName: "ready",
+      senderLogin: "reader",
+      senderPermission: "read"
+    })
+  );
+  assert.equal(decision.role, "");
 });

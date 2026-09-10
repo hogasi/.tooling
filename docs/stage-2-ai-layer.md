@@ -5,10 +5,11 @@
 runners. No API or hosted-review fallback. The first checkpoint is the
 [subscription preflight](setup.md#astra-subscription-preflight), which passed
 live Astra access, credential write-back, repeat use and three sequential queued
-runs on September 10, 2026. Next, replace the Claude plan reviewer and add PR
-review through the same serialized login flow. The hosted-review and Opus
-plan-review instructions below describe the existing implementation until those
-remaining changes land.
+runs on September 10, 2026. The Astra plan reviewer is now implemented locally;
+its live verdict tests and the Astra PR-review route remain pending. Both use
+(or will use) the same serialized login flow. Hosted PR-review instructions
+below are historical context, not an enrollment route for this subscription-only
+pilot.
 
 The reviewer uses a separate `hogasi-review` App with read-only code access. Its
 credentials and the Codex login live in the consumer's `codex-review`
@@ -16,8 +17,9 @@ environment. The existing `hogasi-ai` App retains discovery and implementation;
 it does not receive environment-write permission for credential persistence.
 
 **Full loop still unproven.** Local checks and the live Codex subscription
-preflight pass. Both Astra review routes still need implementation. Complete the
-remaining sandbox verification below before enrolling a repository that matters.
+preflight pass. Astra plan review still needs live validation; PR review still
+needs implementation. Complete the remaining sandbox verification below before
+enrolling a repository that matters.
 
 The goal is a complete issue-to-merge development loop inside GitHub: discovery,
 planning, implementation, tests, independent review, and owner-directed repairs.
@@ -33,8 +35,10 @@ and Codex reviews it. No separate AI tester.
 3. Fable updates the issue body with the outcome, scope, acceptance criteria,
    implementation plan, and verification plan. It applies `ready` when no
    material decisions remain.
-4. The owner approves that proposal revision. Opus implements it, writes tests,
-   runs the repository checks, and opens a linked PR.
+4. Astra reviews the proposal and applies `reviewed` only for a current pass.
+   The owner approves that proposal revision with `ready for dev`. Opus
+   implements it, writes tests, runs the repository checks, and opens a linked
+   PR.
 5. Required CI independently runs against the latest proposed code. Codex
    reviews the PR; GPT-6 Astra is the requested review model, subject to the
    integration limitation below.
@@ -58,6 +62,7 @@ Everything except `ci-node.yml`, which belongs to stage 1, now exists:
 │   ├── actionlint.yaml              suppresses two unknown-context warnings
 │   └── workflows/
 │       ├── ai.yml                   reusable workflow and role defaults
+│       ├── codex-review.yml         serialized subscription runner
 │       └── ci-node.yml              deterministic CI, from stage 1 — not built
 └── agents/
     ├── planner.md                   issue discovery and planning instructions
@@ -65,6 +70,13 @@ Everything except `ci-node.yml`, which belongs to stage 1, now exists:
     ├── review-guidelines.md         canonical section for consumer AGENTS.md
     ├── route.mjs                    event routing and model settings, with tests
     ├── approval.mjs                 approval state and authority checks, with tests
+    ├── review.mjs                   verdict validation, publication and revision checks
+    ├── review-run.mjs               Actions preparation and publication entry point
+    ├── review-snapshot.mjs          committed text snapshot and input size checks
+    ├── review.schema.json          Codex structured response shape
+    ├── plan-reviewer.md             Astra plan-review instructions
+    ├── codex-auth.mjs               restore, persist and remove the subscription login
+    ├── github.mjs                   shared GitHub API transport
     └── skills/                      pinned upstream discovery skill bundle
         ├── grilling/SKILL.md
         └── LICENSE
@@ -88,9 +100,12 @@ subscription quota.
 | Setting                                | Canonical location                                                         | Override or enrollment                                                          |
 | -------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | Planner model                          | Planner job in `.github/workflows/ai.yml`: `fable`                         | `AI_PLANNER_MODEL` Actions variable                                             |
-| Plan reviewer model                    | Plan review job in `.github/workflows/ai.yml`: `opus`                      | `AI_PLAN_REVIEWER_MODEL` Actions variable                                       |
+| Plan reviewer model                    | `agents/route.mjs` and `codex-review.yml`: `gpt-6-astra`                   | `AI_PLAN_REVIEWER_MODEL` Actions variable                                       |
 | Implementer model                      | Implementer job in `.github/workflows/ai.yml`: `opus`                      | `AI_IMPLEMENTER_MODEL` Actions variable                                         |
-| Claude effort                          | Role jobs in `ai.yml`: start at `high`                                     | `AI_PLANNER_EFFORT`, `AI_PLAN_REVIEWER_EFFORT`, `AI_IMPLEMENTER_EFFORT`         |
+| Claude effort                          | Role jobs in `ai.yml`: start at `high`                                     | `AI_PLANNER_EFFORT`, `AI_IMPLEMENTER_EFFORT`                                    |
+| Plan review effort                     | `agents/route.mjs` and `codex-review.yml`: `medium`                        | `AI_PLAN_REVIEWER_EFFORT`: `low` or `medium`                                    |
+| Reviewer credentials                   | Consumer `codex-review` environment                                        | `CODEX_AUTH_JSON`, `AI_REVIEW_APP_ID`, `AI_REVIEW_APP_PRIVATE_KEY`              |
+| Trusted reviewer identity              | `AI_REVIEW_APP_LOGIN`, default `hogasi-review[bot]`                        | Consumer Actions variable only for a differently named App                      |
 | Turn limits and timeouts               | Explicit per-role values in `ai.yml`, chosen and exercised in the sandbox  | Change through a tooling PR                                                     |
 | Role enablement                        | `vars.AI_ROLES` checked by `ai.yml`; unset means disabled                  | GitHub Actions variable: `planner`, then `planner,plan-reviewer,implementer`    |
 | Role behavior                          | `agents/planner.md`, `agents/plan-reviewer.md` and `agents/implementer.md` | Consumer conventions in its own `AGENTS.md`                                     |
@@ -102,9 +117,11 @@ subscription quota.
 
 Model and effort defaults are executable workflow settings, not prompt front
 matter requiring a custom parser. `ai.yml` passes the resolved values through
-`claude_args` as `--model` and `--effort`. Validate overrides against supported
-values before invoking Claude; do not interpolate arbitrary variable contents
-into shell commands. Record the selected model and effort in run output.
+`claude_args` as `--model` and `--effort` for Claude roles; the shared Codex
+workflow receives validated Astra model and effort inputs for plan review.
+Validate overrides against supported values before invoking either provider; do
+not interpolate arbitrary variable contents into shell commands. Record the
+selected model and effort in run output.
 
 Organization Actions variables supply shared overrides; repository variables win
 over them. Variables set only on `.tooling` do not configure consumers of a
@@ -112,9 +129,10 @@ reusable workflow. Keep defaults in the workflow to ship them with its release.
 No separate `.github/ai.yml` configuration schema is needed.
 
 Each consumer has a thin `.github/workflows/ai.yml` caller. It forwards only
-`CLAUDE_CODE_OAUTH_TOKEN`, `AI_APP_ID`, and `AI_APP_PRIVATE_KEY`, and declares
-needed workflow permissions. Secrets are not automatically forwarded by reuse.
-The caller to copy is in [setup.md](setup.md).
+`CLAUDE_CODE_OAUTH_TOKEN`, `AI_APP_ID`, `AI_APP_PRIVATE_KEY` and the three
+reviewer secret names (whose values stay in `codex-review`), and declares needed
+workflow permissions. Secrets are not automatically forwarded by reuse. The
+caller to copy is in [setup.md](setup.md).
 
 `AI_APP_ID` holds the App's **client id**, not its numeric app id:
 `actions/create-github-app-token` deprecated `app-id` in favour of `client-id`,
@@ -137,12 +155,10 @@ default branch instead, and the ignore rule is the reason lint would not say so.
 - **Implementation, test writing, and repairs: Opus.** Use `opus` through the
   same Claude Action and OAuth token, with a fresh run reading the approved
   issue and repository rather than relying on hidden session state.
-- **Independent review: Codex, targeting GPT-6 Astra.** Hosted GitHub review
-  documentation does not establish an exact-model selector. Verify the actual
-  account settings during the sandbox phase. Do not describe an unverified
-  hosted review as Astra. If Astra cannot be selected, the owner must choose
-  between hosted Codex review and an API-backed Codex Action with explicit model
-  selection. No API billing or model substitution is implicitly approved.
+- **Independent plan review: GPT-6 Astra medium.** Subscription Codex CLI on
+  GitHub-hosted runners, using the separate reviewer App and environment.
+  Structured results are published by trusted code. PR review through the same
+  runner is the next implementation step; no hosted or API fallback is approved.
 
 The intended authentication path is subscriptions. Fable is included within
 limits on Max and premium seats, but Pro requires usage credits. Verify access
@@ -222,7 +238,10 @@ the planner starts implementation before approval.
 Approval is enforced by `agents/approval.mjs`, invoked by the workflow.
 Recording hashes the exact issue body in the approval label event and requires
 the live body to match. Rerunning an old event cannot approve an edited
-proposal. All of `ready`, `reviewed` and `ready for dev` must still be present.
+proposal. A current passing record from the configured reviewer App must match
+both the proposal digest and the default-branch commit. Human-authored verdicts,
+label-only passes, pending reviews and superseded records do not authorize work.
+All of `ready`, `reviewed` and `ready for dev` must still be present.
 Verification reads all comment pages and uses the latest App-authored approval
 marker, including revocations; a human-authored marker cannot establish
 approval.
@@ -263,8 +282,8 @@ association, which is the account the repository belongs to.
 `author_association` is otherwise only a social label — `MEMBER` says the sender
 is in the org and `COLLABORATOR` that they are listed on the repository, neither
 of which grants write access — so it decides nothing on its own, and is used to
-explain a refusal. Label events defer authority to the approval job because the
-issue's association describes its author. Repository write access is checked
+explain a refusal. Label events use the sender's repository permission because
+the issue's association describes its author. Repository write access is checked
 again by every approval operation and by the Claude Action before it runs.
 Neither `allowed_bots` nor `allowed_non_write_users` is enabled. This stops a
 read-only member from spending the subscription on a run, or removing approval
