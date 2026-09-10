@@ -122,7 +122,7 @@ function recordApproval(context, callGitHub, issue) {
   if (latestApproval(context, callGitHub)?.digest !== digest) {
     callGitHub({
       body: {
-        body: `${marker} sha256=${digest} run=${context.runId} -->\nApproval bound to this proposal revision by @${context.actor}. Editing the proposal requires renewed approval.`
+        body: `${marker} sha256=${digest} run=${context.runId} -->\nPlan approved by @${context.actor} — implementation started. Editing the plan clears this approval.`
       },
       method: "POST",
       path: `repos/${context.repository}/issues/${context.issueNumber}/comments`
