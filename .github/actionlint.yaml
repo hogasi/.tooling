@@ -11,6 +11,3 @@ paths:
       - 'property "workflow_(sha|repository)" is not defined in object type'
       # GitHub supports queue:max; actionlint 1.7.12 predates the queue property.
       - 'unexpected key "queue" for "concurrency" section'
-      # These secrets come from the called job's environment, not workflow_call.
-      - 'property "(codex_auth_json|ai_review_app_id|ai_review_app_private_key)"
-        is not defined in object type'

@@ -23,7 +23,15 @@ test("subscription persistence uses only the environment's reviewer App", () => 
     /private-key: \$\{\{ secrets.AI_REVIEW_APP_PRIVATE_KEY \}\}/
   );
   assert.doesNotMatch(codexWorkflow, /\bAI_APP_ID\b|\bAI_APP_PRIVATE_KEY\b/);
-  assert.doesNotMatch(codexWorkflow.split("jobs:", 1)[0], /secrets:/);
+  const declarations = codexWorkflow.split("jobs:", 1)[0];
+  for (const secret of [
+    "CODEX_AUTH_JSON",
+    "AI_REVIEW_APP_ID",
+    "AI_REVIEW_APP_PRIVATE_KEY"
+  ]) {
+    assert.ok(declarations.includes(`${secret}:`));
+  }
+  assert.equal(declarations.match(/required: false/g)?.length, 3);
   assert.doesNotMatch(workflow, /AI_REVIEW_APP_/);
 });
 

@@ -2,6 +2,15 @@ name: Codex subscription check
 
 on:
   workflow_call:
+    # Declare the names used by this workflow. Values come from the job's
+    # environment; callers do not need to forward repository secrets.
+    secrets:
+      CODEX_AUTH_JSON:
+        required: false
+      AI_REVIEW_APP_ID:
+        required: false
+      AI_REVIEW_APP_PRIVATE_KEY:
+        required: false
 
 permissions: {}
 

@@ -38,8 +38,16 @@ test("restores subscription credentials with private file permissions", (context
   assert.equal(statSync(directory).mode & 0o777, 0o700);
 });
 
+for (const value of [undefined, "", " ".repeat(3)]) {
+  test(`reports a missing environment secret (${JSON.stringify(value)})`, (context) => {
+    assert.throws(
+      () => restoreAuth({ directory: fixture(context), value }),
+      /CODEX_AUTH_JSON is missing or empty/
+    );
+  });
+}
+
 for (const value of [
-  "",
   "not json",
   "null",
   "{}",
