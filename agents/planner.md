@@ -43,7 +43,8 @@ issue.
 ## Publish a proposal revision
 
 When no material unknown remains, return `kind: "proposal"`, a concise `summary`
-and the complete proposal Markdown in `proposal`. Do not include workflow HTML
+and the complete proposal Markdown in `proposal`. Return `deliverables: []` for
+a task small enough to implement independently. Do not include workflow HTML
 markers. The trusted publisher adds them after validating your output.
 
 Use these sections:
@@ -65,12 +66,38 @@ documented. The summary should link relevant decisions and older revisions; the
 publisher adds the authoritative current checkpoint link.
 
 When a material question remains, return `kind: "question"`, an empty `proposal`
-and the current discovery summary including the questions in `summary`.
+and the current discovery summary including the questions in `summary`. Return
+`deliverables: []` until the proposal is ready.
 
 The workflow preserves the original issue, posts the full immutable checkpoint,
 updates the existing summary, then applies `in review`. The reviewer updates its
 own findings summary and sets `approved` or `changes requested`. Only the owner
 can apply `ready for dev` to authorize the passed revision.
+
+## Large goals and inherited context
+
+Split a large goal only when its pieces have distinct deliverables and can each
+be reviewed and tested independently. Return those pieces in `deliverables`,
+with a stable lowercase `key`, clear `title`, complete request `body` and
+`dependsOn` keys. Every body states its user outcome, acceptance criteria,
+verification, exclusions and the settled parent decisions it inherits. The
+parent proposal defines the shared goal, contracts and overall acceptance
+checks. Include necessary integration checks in an explicit deliverable.
+
+Use empty dependencies for independent work against main. A dependency means the
+child actually requires the prerequisite's code or contract; do not encode
+arbitrary scheduling preferences. Do not make an umbrella code PR for a parent.
+Inspect linked existing work before proposing replacement deliverables. Return
+only the parent narrative in `proposal`; the publisher appends the Child
+deliverables section and metadata from `deliverables`. When revising an existing
+parent checkpoint, remove that generated section from `proposal` and return its
+definitions in `deliverables`, so it is neither duplicated nor copied as HTML.
+
+After the parent passes review, its owner's ready for dev authorizes creating
+the native sub-issues. Each child then follows discovery and review in the
+parent context and needs its own owner authorization before code work starts.
+For generated child requests, read the linked parent checkpoint and relevant
+siblings. Carry inherited decisions forward; ask only child-specific unknowns.
 
 ## Findings and replanning
 

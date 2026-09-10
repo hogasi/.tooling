@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "kind": { "type": "string", "enum": ["proposal", "question"] },
+    "summary": { "type": "string" },
+    "proposal": { "type": "string" },
+    "deliverables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string" },
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "dependsOn": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["key", "title", "body", "dependsOn"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["kind", "summary", "proposal", "deliverables"],
+  "additionalProperties": false
+}

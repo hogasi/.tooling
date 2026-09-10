@@ -1,6 +1,7 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { verifyInheritance } from "./delivery-scope.mjs";
 import { githubRequest } from "./github.mjs";
 import { latestComment, readComments, readProposal } from "./proposal.mjs";
 import { requirePlanReview } from "./review.mjs";
@@ -16,6 +17,7 @@ export function applyApproval(context, callGitHub = githubRequest) {
     clearApproval(context, issue, callGitHub);
     return "";
   }
+  verifyInheritance(context, issue, callGitHub);
   const proposal = readProposal(context, callGitHub);
   requireDevLabel(issue);
   const event = readDevEvent(context, callGitHub);
@@ -35,6 +37,7 @@ export function readApprovedProposal(context, callGitHub = githubRequest) {
   validateContext(context);
   const issue = readIssue(context, callGitHub);
   requireDevLabel(issue);
+  verifyInheritance(context, issue, callGitHub);
   const proposal = readProposal(context, callGitHub);
   const event = readDevEvent(context, callGitHub);
   const authorization = verifyApproval(

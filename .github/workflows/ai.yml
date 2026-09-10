@@ -38,6 +38,7 @@ jobs:
       pull-requests: read
     outputs:
       automatic: ${{ steps.decide.outputs.automatic }}
+      discovery: ${{ steps.decide.outputs.discovery }}
       head: ${{ steps.decide.outputs.head }}
       owner: ${{ steps.decide.outputs.owner }}
       pull: ${{ steps.decide.outputs.pull }}
@@ -146,9 +147,7 @@ jobs:
       # which for a pull request means reading it back off the branch name.
       - name: Resolve the work key
         id: work-key
-        if:
-          steps.decide.outputs.role != '' && steps.decide.outputs.role !=
-          'pr-reviewer' && steps.decide.outputs.automatic != 'true'
+        if: steps.decide.outputs.role != '' && steps.decide.outputs.issue == ''
         env:
           GH_TOKEN: ${{ github.token }}
           IS_PULL_REQUEST: ${{ github.event.issue.pull_request != null }}
@@ -300,6 +299,7 @@ jobs:
         id: app-token
         with:
           client-id: ${{ secrets.AI_APP_ID }}
+          permission-administration: read
           permission-contents: read
           permission-actions: read
           permission-issues: write
@@ -315,9 +315,12 @@ jobs:
             ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
           ISSUE: ${{ needs.route.outputs.issue }}
           SOURCE_RUN: ${{ needs.route.outputs.source }}
+          DISCOVERY: ${{ needs.route.outputs.discovery }}
           AUTOMATIC: ${{ needs.route.outputs.automatic }}
         run: |
-          if [ "$AUTOMATIC" = true ]; then
+          if [ "$DISCOVERY" = true ]; then
+            node "${RUNNER_TEMP}/tooling/agents/delivery-run.mjs" claim-child
+          elif [ "$AUTOMATIC" = true ]; then
             node "${RUNNER_TEMP}/tooling/agents/automation.mjs" claim
           else
             node "${RUNNER_TEMP}/tooling/agents/automation.mjs" reset
@@ -368,6 +371,7 @@ jobs:
               "$GITHUB_REPOSITORY" "$ISSUE" "$MODEL" "$EFFORT"
             printf '%s\n' "$delimiter"
           } >> "$GITHUB_OUTPUT"
+          printf 'schema=%s\n' "$(jq -c . "${RUNNER_TEMP}/tooling/agents/planner.schema.json")" >> "$GITHUB_OUTPUT"
 
       # An explicit prompt puts the action in agent mode, which installs a
       # GitHub MCP server only for the tools named here. Without them the
@@ -397,8 +401,8 @@ jobs:
           claude_args:
             --model ${{ needs.route.outputs.model }} --effort ${{
             needs.route.outputs.effort }} --max-turns 60 --allowedTools
-            'mcp__github__*' Read Glob Grep Skill --json-schema
-            '{"type":"object","properties":{"kind":{"type":"string","enum":["proposal","question"]},"summary":{"type":"string"},"proposal":{"type":"string"}},"required":["kind","summary","proposal"],"additionalProperties":false}'
+            'mcp__github__*' Read Glob Grep Skill --json-schema '${{
+            steps.prompt.outputs.schema }}'
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.reader-token.outputs.token }}
           prompt: ${{ steps.prompt.outputs.text }}
@@ -489,6 +493,39 @@ jobs:
     secrets:
       AI_APP_ID: ${{ secrets.AI_APP_ID }}
       AI_APP_PRIVATE_KEY: ${{ secrets.AI_APP_PRIVATE_KEY }}
+
+  delivery-progress:
+    needs: route
+    if: needs.route.outputs.role == 'delivery-tracker'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: ai-write-${{ github.repository }}-${{ needs.route.outputs.issue }}
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/create-github-app-token@v3.2.0
+        id: token
+        with:
+          client-id: ${{ secrets.AI_APP_ID }}
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: read
+          permission-metadata: read
+      - name: Update parent delivery evidence
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          APP_LOGIN: ${{ steps.token.outputs.app-slug }}[bot]
+          ISSUE: ${{ needs.route.outputs.issue }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: node agents/delivery-run.mjs progress
 
   implement:
     name: Implement
@@ -615,15 +652,29 @@ jobs:
             echo 'claimed=true' >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Create reviewed child issues or continue the leaf implementation
+        id: delivery
+        if: steps.correction.outputs.claimed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          ISSUE: ${{ needs.route.outputs.issue }}
+        run: node "${RUNNER_TEMP}/tooling/agents/delivery-run.mjs" create
+
       # The queued approval and repair claim precede credentials that can push.
       - uses: actions/checkout@v7
-        if: steps.correction.outputs.claimed == 'true'
+        if:
+          steps.correction.outputs.claimed == 'true' &&
+          steps.delivery.outputs.leaf == 'true'
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
       - uses: actions/setup-node@v7
-        if: steps.correction.outputs.claimed == 'true'
+        if:
+          steps.correction.outputs.claimed == 'true' &&
+          steps.delivery.outputs.leaf == 'true'
         with:
           node-version: ${{ hashFiles('.nvmrc') == '' && '24.19.0' || '' }}
           node-version-file: ${{ hashFiles('.nvmrc') != '' && '.nvmrc' || '' }}
@@ -632,13 +683,16 @@ jobs:
       - uses: pnpm/action-setup@v6.1.0
         if:
           steps.correction.outputs.claimed == 'true' &&
-          hashFiles('pnpm-lock.yaml') != ''
+          steps.delivery.outputs.leaf == 'true' && hashFiles('pnpm-lock.yaml')
+          != ''
 
       # A run takes minutes and posts nothing until it ends. The reaction is the
       # only sign the owner gets that the thing they wrote was picked up, so it
       # goes on before the model starts and is replaced by the outcome after.
       - name: React to show the run started
-        if: steps.correction.outputs.claimed == 'true'
+        if:
+          steps.correction.outputs.claimed == 'true' &&
+          steps.delivery.outputs.leaf == 'true'
         id: reaction
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -649,7 +703,9 @@ jobs:
         run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" start
 
       - uses: anthropics/claude-code-action@v1.0.219
-        if: steps.correction.outputs.claimed == 'true'
+        if:
+          steps.correction.outputs.claimed == 'true' &&
+          steps.delivery.outputs.leaf == 'true'
         with:
           allowed_bots:
             ${{ needs.route.outputs.automatic == 'true' && github.actor || '' }}
