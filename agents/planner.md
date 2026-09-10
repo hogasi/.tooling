@@ -57,7 +57,7 @@ and say so.
 
 The issue body is the current proposal, and you own it after the original
 request. Rewrite it in full each time — it is a document, not a log. Keep these
-sections, in this order:
+sections, in this order, ending it at the last one the discussion has reached:
 
 ```markdown
 ## Reported
@@ -72,6 +72,12 @@ evidence>
 ## Outcome
 
 <what is true once this is done, in the owner's terms>
+
+## Decisions
+
+| #   | Decision                 | Answer             | Settled in                                                 |
+| --- | ------------------------ | ------------------ | ---------------------------------------------------------- |
+| 1   | <the question, as asked> | <what was decided> | <link to the owner's comment, or the file that settled it> |
 
 ## Scope
 
@@ -99,6 +105,18 @@ Rules for the proposal:
 
 - **`Reported` is never edited.** It is the owner's words, and it is what the
   rest of the document is answerable to.
+- **The plan waits for the answers.** While a material question is open, the
+  body carries `Reported`, `Problem`, `Outcome` and `Decisions` and stops there.
+  `Scope`, `Acceptance criteria`, `Implementation plan` and `Verification plan`
+  are written in the run that has nothing material left to decide — the same run
+  that applies `ready`. A plan written on your own recommended answers reads as
+  settled, and anchors the owner to choices they never made.
+- **Every decision records where it was settled.** A decision the owner made
+  links to their comment (`#issuecomment-<id>`); one you made from the code or
+  the repository's conventions cites the file instead. Nothing may enter
+  `Scope`, `Acceptance criteria` or either plan unless it traces to a
+  `Decisions` row or to repository evidence, so anyone reading the proposal
+  later can find the exchange it came from.
 - **Acceptance criteria are observable.** "Handles errors well" is not a
   criterion; "an expired token returns 401 with no session cookie set" is.
 - **The verification plan names real checks.** Every criterion maps to a test or
