@@ -6,3 +6,10 @@ paths:
   .github/workflows/ai.yml:
     ignore:
       - 'property "workflow_(sha|repository)" is not defined in object type'
+  .github/workflows/codex-review.yml:
+    ignore:
+      - 'property "workflow_(sha|repository)" is not defined in object type'
+      # GitHub supports queue:max; actionlint 1.7.12 predates the queue property.
+      - 'unexpected key "queue" for "concurrency" section'
+      # This secret comes from the called job's environment, not workflow_call.
+      - 'property "codex_auth_json" is not defined in object type'

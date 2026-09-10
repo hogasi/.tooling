@@ -7,6 +7,48 @@ const workflow = readFileSync(
   new URL("../.github/workflows/ai.yml", import.meta.url),
   "utf8"
 );
+const codexWorkflow = readFileSync(
+  new URL("../.github/workflows/codex-review.yml", import.meta.url),
+  "utf8"
+);
+
+test("subscription jobs serialize without replacing waiting reviews", () => {
+  assert.match(codexWorkflow, /group: codex-subscription/);
+  assert.match(codexWorkflow, /queue: max/);
+  assert.match(codexWorkflow, /cancel-in-progress: false/);
+  assert.match(codexWorkflow, /environment: codex-review/);
+  assert.match(codexWorkflow, /github.event.repository.private == true/);
+});
+
+test("a failed Codex call still persists credentials before cleanup", () => {
+  const call = codexWorkflow.indexOf("codex exec");
+  const token = codexWorkflow.indexOf("permission-environments: write");
+  const persist = codexWorkflow.indexOf("name: Persist the refreshed login");
+  const clear = codexWorkflow.indexOf("name: Remove runner credentials");
+  assert.ok(call < token && token < persist && persist < clear);
+  assert.match(codexWorkflow.slice(persist, clear), /always\(\)/);
+  assert.doesNotMatch(
+    codexWorkflow.slice(persist, clear),
+    /steps.codex.outcome == 'success'/
+  );
+  assert.match(codexWorkflow.slice(clear), /if: always\(\)/);
+});
+
+test("the subscription smoke test pins Astra medium and never loads consumer code", () => {
+  assert.match(codexWorkflow, /@openai\/codex@0\.154\.0/);
+  assert.match(codexWorkflow, /--model gpt-6-astra/);
+  assert.match(codexWorkflow, /model_reasoning_effort="medium"/);
+  assert.match(
+    codexWorkflow,
+    /--ignore-user-config --ignore-rules --ephemeral/
+  );
+  assert.match(codexWorkflow, /--sandbox read-only/);
+  assert.match(codexWorkflow, /persist-credentials: false/);
+  assert.doesNotMatch(
+    codexWorkflow,
+    /OPENAI_API_KEY|CODEX_API_KEY|upload-artifact|actions\/cache/
+  );
+});
 const job = (name) =>
   workflow.split(`\n  ${name}:\n`)[1].split(/\n {2}[a-z-]+:\n/, 1)[0];
 const condition = (name) =>

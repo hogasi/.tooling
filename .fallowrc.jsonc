@@ -29,6 +29,12 @@
   "health": {
     "thresholdOverrides": [
       {
+        "files": ["agents/codex-auth.mjs"],
+        "functions": ["requireSubscription"],
+        "maxCrap": 57,
+        "reason": "Estimated CRAP marks this private validator untested. codex-auth.test.mjs exercises it through restoreAuth and persistAuth with valid subscription auth, malformed JSON, null, missing tokens, API auth and mixed auth. Keep cyclomatic and cognitive limits unchanged."
+      },
+      {
         "files": ["agents/approval.mjs"],
         "functions": [
           "latestApproval",

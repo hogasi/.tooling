@@ -1,5 +1,14 @@
 # Stage 2 — development directly in GitHub
 
+**Approved reviewer update:** both plan and PR review will use `gpt-6-astra` at
+`medium` reasoning through subscription-authenticated Codex CLI on GitHub-hosted
+runners. No API or hosted-review fallback. The first checkpoint is the
+[subscription preflight](setup.md#astra-subscription-preflight), now implemented
+locally but not yet run in GitHub. After it passes, replace the Claude plan
+reviewer and add PR review through the same serialized login flow. The
+hosted-review and Opus plan-review instructions below describe the existing
+implementation until those remaining changes land.
+
 **Built, unproven.** The files exist and pass this repository's own checks; no
 part of the loop has yet run against GitHub. Phase A below is what turns this
 from written to working, and nothing here should be enrolled on a repository
