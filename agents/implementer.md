@@ -93,6 +93,9 @@ account, quota, runner or missing-permission failures.
 - Stay inside the approved scope. A review finding that asks for something the
   proposal excluded gets a reply saying so, not an implementation.
 - Reply on the pull request with what you changed and what the checks now say.
+  Finish the run after pushing and reporting. Do not wait for AI review or
+  correction-cleanup jobs: they may be waiting for this writer lock. Independent
+  CI and review remain merge gates after this job ends.
 
 ## Boundaries
 

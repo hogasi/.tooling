@@ -402,3 +402,10 @@ An authorized `@claude` repair explicitly resets the budget after exhaustion.
 Quota, canceled CI and infrastructure failures do not create automatic retries.
 The implementer opens an early draft, keeps it draft while working, and marks
 ready after its checks pass. Merges remain human-controlled.
+
+The builder checks out the consumer with its App token only after queued
+approval and repair-claim validation. This prevents checkout's read-only
+`GITHUB_TOKEN` credential from overriding authenticated git pushes. It installs
+Node from `.nvmrc` when present (24.19.0 otherwise) and installs the declared
+pnpm version when the repository has `pnpm-lock.yaml`. These setup steps are
+skipped when duplicate evidence or verified completion requires no model call.

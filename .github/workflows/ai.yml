@@ -523,12 +523,6 @@ jobs:
       - name: Stage the tooling files
         run: mv "${GITHUB_WORKSPACE}/_tooling" "${RUNNER_TEMP}/tooling"
 
-      # Full history: the implementer resumes an existing claude/issue-<n>
-      # branch on a repair rather than starting a second one.
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
       # Vendored from silviuhogasi/.ai at commit
       # 6b5066167dc699d3392e1a87dcc110190538ad80
       # (general/coding-style/AGENTS.md). Claude Code reads this as user memory,
@@ -620,6 +614,25 @@ jobs:
             node "${RUNNER_TEMP}/tooling/agents/repair-run.mjs" reset
             echo 'claimed=true' >> "$GITHUB_OUTPUT"
           fi
+
+      # The queued approval and repair claim precede credentials that can push.
+      - uses: actions/checkout@v7
+        if: steps.correction.outputs.claimed == 'true'
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/setup-node@v7
+        if: steps.correction.outputs.claimed == 'true'
+        with:
+          node-version: ${{ hashFiles('.nvmrc') == '' && '24.19.0' || '' }}
+          node-version-file: ${{ hashFiles('.nvmrc') != '' && '.nvmrc' || '' }}
+          package-manager-cache: false
+
+      - uses: pnpm/action-setup@v6.1.0
+        if:
+          steps.correction.outputs.claimed == 'true' &&
+          hashFiles('pnpm-lock.yaml') != ''
 
       # A run takes minutes and posts nothing until it ends. The reaction is the
       # only sign the owner gets that the thing they wrote was picked up, so it
