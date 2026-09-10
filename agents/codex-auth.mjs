@@ -39,6 +39,11 @@ export function persistAuth(
 Restore only ChatGPT-managed auth; the caller supplies a trusted temp directory.
 */
 export function restoreAuth({ directory, value }) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(
+      "CODEX_AUTH_JSON is missing or empty; check the codex-review environment secret and reusable workflow declarations"
+    );
+  }
   requireSubscription(value);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- The workflow supplies a dedicated runner temp directory, never repository input.
   mkdirSync(directory, { mode: 0o700, recursive: true });

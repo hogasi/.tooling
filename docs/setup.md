@@ -194,9 +194,11 @@ cannot provide that lock.
    ```
 
    All three secrets belong to the called job's `codex-review` environment; the
-   caller forwards no secrets. Keep the existing `AI_APP_*` credentials reserved
-   for discovery and implementation. Environment secrets are read when the job
-   starts, so a waiting job sees the preceding job's credential update.
+   caller forwards no secrets. The reusable workflow declares those names as
+   optional so callers are not required to provide repository-level values. Keep
+   the existing `AI_APP_*` credentials reserved for discovery and
+   implementation. Environment secrets are read when the job starts, so a
+   waiting job sees the preceding job's credential update.
 
 5. Run it twice, then queue three runs. Confirm all execute, the model check
    passes, persistence succeeds, and the environment secret's update timestamp
