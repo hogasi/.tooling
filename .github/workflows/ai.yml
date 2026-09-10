@@ -271,11 +271,16 @@ jobs:
             printf '%s\n' "$delimiter"
           } >> "$GITHUB_OUTPUT"
 
+      # An explicit prompt puts the action in agent mode, which installs a
+      # GitHub MCP server only for the tools named here. Without them the
+      # planner reads the repository and is then denied every attempt to say
+      # what it found — a run that costs a model call and posts nothing.
       - uses: anthropics/claude-code-action@v1.0.219
         with:
           claude_args:
             --model ${{ needs.route.outputs.model }} --effort ${{
-            needs.route.outputs.effort }} --max-turns 60
+            needs.route.outputs.effort }} --max-turns 60 --allowedTools
+            'mcp__github__*'
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app-token.outputs.token }}
           prompt: ${{ steps.prompt.outputs.text }}
@@ -375,9 +380,13 @@ jobs:
           # pull request. `claude/issue-<n>` is also what the router reads the
           # work key back off when a repair arrives on the pull request.
           branch_name_template: "{{prefix}}{{entityType}}-{{entityNumber}}"
+          # Agent mode denies anything not named here, so the implementer
+          # needs the tools that change files as well as the GitHub server.
+          # What it may do with them is bounded by its token, not this list.
           claude_args:
             --model ${{ needs.route.outputs.model }} --effort ${{
-            needs.route.outputs.effort }} --max-turns 200
+            needs.route.outputs.effort }} --max-turns 200 --allowedTools
+            'mcp__github__*' Bash Edit Write
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app-token.outputs.token }}
           prompt: ${{ steps.prompt.outputs.text }}
