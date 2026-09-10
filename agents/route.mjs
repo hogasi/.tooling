@@ -15,10 +15,11 @@
 import { appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const APPROVED_LABEL = "approved";
 const AUTHORIZED_ASSOCIATIONS = new Set(["COLLABORATOR", "MEMBER", "OWNER"]);
 const OWNER_ASSOCIATION = "OWNER";
+const DEV_LABEL = "ready for dev";
 const READY_LABEL = "ready";
+const REVIEWED_LABEL = "reviewed";
 const REPAIR_PATTERN = /(?:^|\s)@claude(?![\w-])/i;
 const REPAIR_PHRASE = "@claude";
 const REPLAN_PATTERN = /(?:^|\s)@claude\s+replan\b/i;
@@ -90,13 +91,37 @@ const senderAuthority = (event) =>
     ? associationAuthority(event)
     : labelAuthority(event);
 
-const authorizationFailure = (event) =>
-  event.senderType !== "User" || event.senderLogin.endsWith("[bot]")
-    ? `${event.senderLogin} is not a human account`
-    : senderAuthority(event);
+/**
+ * The planner applies `ready` as the App, so the review it asks for arrives as
+ * a bot event. This is the only bot event that starts a role: the App's own
+ * login, on that one label, on an issue. The login comes from the workflow's
+ * App-token step rather than from the payload, so a comment claiming to be the
+ * App does not qualify.
+ */
+const isReadyLabelEvent = ({ action, eventName, labelName }) =>
+  eventName === "issues" && action === "labeled" && labelName === READY_LABEL;
+
+const isTheApp = ({ appLogin, senderLogin }) =>
+  appLogin !== "" && senderLogin === appLogin;
+
+const isReviewRequest = (event) => isReadyLabelEvent(event) && isTheApp(event);
+
+const isBot = (event) =>
+  event.senderType !== "User" || event.senderLogin.endsWith("[bot]");
+
+const authorizationFailure = (event) => {
+  if (isBot(event)) {
+    return isReviewRequest(event)
+      ? ""
+      : `${event.senderLogin} is not a human account`;
+  }
+
+  return senderAuthority(event);
+};
 
 const readEvent = (environment) => ({
   action: text(environment.EVENT_ACTION),
+  appLogin: text(environment.APP_LOGIN),
   associationSubject: text(environment.EVENT_ASSOCIATION_SUBJECT),
   authorAssociation: text(environment.EVENT_AUTHOR_ASSOCIATION),
   commentBody: text(environment.EVENT_COMMENT_BODY),
@@ -118,7 +143,7 @@ const routeIssueComment = ({ commentBody, labels }) => {
     };
   }
 
-  if (labels.includes(APPROVED_LABEL)) {
+  if (labels.includes(DEV_LABEL)) {
     return skip(
       "the proposal is approved; an ordinary comment restarts nothing"
     );
@@ -128,7 +153,7 @@ const routeIssueComment = ({ commentBody, labels }) => {
 };
 
 const routeIssueEdited = ({ labels }) =>
-  labels.includes(APPROVED_LABEL)
+  labels.includes(DEV_LABEL)
     ? {
         approval: "clear",
         reason: "the approved proposal was edited and needs approving again",
@@ -137,23 +162,43 @@ const routeIssueEdited = ({ labels }) =>
     : skip("editing an unapproved issue changes nothing");
 
 const routeIssueLabeled = ({ labelName, labels }) => {
-  if (labelName !== APPROVED_LABEL) {
+  if (labelName === READY_LABEL) {
+    return {
+      approval: "none",
+      reason: "the planner marked the proposal ready for review",
+      role: "plan-reviewer"
+    };
+  }
+
+  if (labelName !== DEV_LABEL) {
     return skip(`the ${labelName} label starts nothing`);
   }
 
-  if (!labels.includes(READY_LABEL)) {
-    throw new Error(
-      `Approved without the ${READY_LABEL} label. The planner applies ` +
-        `${READY_LABEL} once no material decisions remain; approving before ` +
-        `then approves a proposal that is still moving.`
-    );
-  }
+  requireReviewedProposal(labels);
 
   return {
     approval: "record",
-    reason: "an owner approved the proposal in the issue body",
+    reason: "an owner approved the reviewed proposal in the issue body",
     role: "implementer"
   };
+};
+
+/**
+ * `ready` says the planner has nothing material left to decide and `reviewed`
+ * says the plan reviewer found nothing to fix. Approving without either approves a
+ * proposal that is still moving, so it fails rather than implementing.
+ */
+const requireReviewedProposal = (labels) => {
+  const missing = [READY_LABEL, REVIEWED_LABEL].filter(
+    (label) => !labels.includes(label)
+  );
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Approved without the ${missing.join(" and ")} label. The planner ` +
+        `applies ${READY_LABEL} and the plan reviewer applies ${REVIEWED_LABEL}.`
+    );
+  }
 };
 
 const routePullRequestComment = ({ commentBody }) =>
@@ -271,29 +316,46 @@ const selected = (override, fallback) => {
   return trimmed === "" ? fallback : trimmed;
 };
 
+const ROLE_SETTINGS = new Map([
+  [
+    "implementer",
+    (environment) => ({
+      defaultModel: environment.AI_DEFAULT_IMPLEMENTER_MODEL,
+      effort: environment.AI_IMPLEMENTER_EFFORT,
+      model: environment.AI_IMPLEMENTER_MODEL
+    })
+  ],
+  [
+    "plan-reviewer",
+    (environment) => ({
+      defaultModel: environment.AI_DEFAULT_PLAN_REVIEWER_MODEL,
+      effort: environment.AI_PLAN_REVIEWER_EFFORT,
+      model: environment.AI_PLAN_REVIEWER_MODEL
+    })
+  ],
+  [
+    "planner",
+    (environment) => ({
+      defaultModel: environment.AI_DEFAULT_PLANNER_MODEL,
+      effort: environment.AI_PLANNER_EFFORT,
+      model: environment.AI_PLANNER_MODEL
+    })
+  ]
+]);
+
 /**
  * Resolves the model and effort a role runs with. The workflow's own defaults
  * are the fallbacks, so an enrolled repository that sets no variables gets
  * whatever shipped with the version of the workflow it pinned.
  */
 export function settingsFor(role, environment) {
-  if (role === "") {
+  const read = ROLE_SETTINGS.get(role);
+
+  if (!read) {
     return { effort: "", model: "" };
   }
 
-  const perRole = {
-    implementer: {
-      defaultModel: environment.AI_DEFAULT_IMPLEMENTER_MODEL,
-      effort: environment.AI_IMPLEMENTER_EFFORT,
-      model: environment.AI_IMPLEMENTER_MODEL
-    },
-    planner: {
-      defaultModel: environment.AI_DEFAULT_PLANNER_MODEL,
-      effort: environment.AI_PLANNER_EFFORT,
-      model: environment.AI_PLANNER_MODEL
-    }
-  };
-  const chosen = role === "planner" ? perRole.planner : perRole.implementer;
+  const chosen = read(environment);
 
   return {
     effort: resolveEffort({

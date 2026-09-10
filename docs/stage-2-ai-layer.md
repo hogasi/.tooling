@@ -71,19 +71,20 @@ is one the CLI accepts. It is a module with tests rather than a `case` statement
 in YAML so the sandbox can exercise the routing table without spending
 subscription quota.
 
-| Setting                                | Canonical location                                                        | Override or enrollment                                                          |
-| -------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Planner model                          | Planner job in `.github/workflows/ai.yml`: `fable`                        | `AI_PLANNER_MODEL` Actions variable                                             |
-| Implementer model                      | Implementer job in `.github/workflows/ai.yml`: `opus`                     | `AI_IMPLEMENTER_MODEL` Actions variable                                         |
-| Claude effort                          | Role jobs in `ai.yml`: start at `high`                                    | `AI_PLANNER_EFFORT`, `AI_IMPLEMENTER_EFFORT`                                    |
-| Turn limits and timeouts               | Explicit per-role values in `ai.yml`, chosen and exercised in the sandbox | Change through a tooling PR                                                     |
-| Role enablement                        | `vars.AI_ROLES` checked by `ai.yml`; unset means disabled                 | GitHub Actions variable: `planner`, then `planner,implementer`                  |
-| Role behavior                          | `agents/planner.md` and `agents/implementer.md`                           | Consumer conventions in its own `AGENTS.md`                                     |
-| Discovery method                       | `agents/skills/grilling/SKILL.md`                                         | GitHub adaptation in `agents/planner.md`                                        |
-| Review instructions                    | `agents/review-guidelines.md`                                             | Copied into consumer `AGENTS.md`; subsequently owned by that repo               |
-| Codex model and automatic reviews      | Codex settings for the linked account/repository                          | Verify Astra selection there; workflow variables cannot select the hosted model |
-| Claude OAuth token and App credentials | GitHub organization Actions secrets                                       | Explicitly granted to each enrolled repository and forwarded by its caller      |
-| Required checks and branch rules       | GitHub repository or scoped organization rulesets                         | Enrollment checklist in [setup.md](setup.md)                                    |
+| Setting                                | Canonical location                                                         | Override or enrollment                                                          |
+| -------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Planner model                          | Planner job in `.github/workflows/ai.yml`: `fable`                         | `AI_PLANNER_MODEL` Actions variable                                             |
+| Plan reviewer model                    | Plan review job in `.github/workflows/ai.yml`: `opus`                      | `AI_PLAN_REVIEWER_MODEL` Actions variable                                       |
+| Implementer model                      | Implementer job in `.github/workflows/ai.yml`: `opus`                      | `AI_IMPLEMENTER_MODEL` Actions variable                                         |
+| Claude effort                          | Role jobs in `ai.yml`: start at `high`                                     | `AI_PLANNER_EFFORT`, `AI_PLAN_REVIEWER_EFFORT`, `AI_IMPLEMENTER_EFFORT`         |
+| Turn limits and timeouts               | Explicit per-role values in `ai.yml`, chosen and exercised in the sandbox  | Change through a tooling PR                                                     |
+| Role enablement                        | `vars.AI_ROLES` checked by `ai.yml`; unset means disabled                  | GitHub Actions variable: `planner`, then `planner,plan-reviewer,implementer`    |
+| Role behavior                          | `agents/planner.md`, `agents/plan-reviewer.md` and `agents/implementer.md` | Consumer conventions in its own `AGENTS.md`                                     |
+| Discovery method                       | `agents/skills/grilling/SKILL.md`                                          | GitHub adaptation in `agents/planner.md`                                        |
+| Review instructions                    | `agents/review-guidelines.md`                                              | Copied into consumer `AGENTS.md`; subsequently owned by that repo               |
+| Codex model and automatic reviews      | Codex settings for the linked account/repository                           | Verify Astra selection there; workflow variables cannot select the hosted model |
+| Claude OAuth token and App credentials | GitHub organization Actions secrets                                        | Explicitly granted to each enrolled repository and forwarded by its caller      |
+| Required checks and branch rules       | GitHub repository or scoped organization rulesets                          | Enrollment checklist in [setup.md](setup.md)                                    |
 
 Model and effort defaults are executable workflow settings, not prompt front
 matter requiring a custom parser. `ai.yml` passes the resolved values through
@@ -184,30 +185,33 @@ plan written on the planner's own recommended answers read as settled and anchor
 the owner to choices they never made. Each decision records where it was settled
 — the owner's comment, or the file that answered it — so the proposal stays
 traceable to the exchange behind it. There is no additional confirmation round:
-the owner applies `approved` to authorize implementation. Revision-specific
+the plan reviewer reads the plan against the code and applies `reviewed`, and
+the owner applies `ready for dev` to authorize implementation. Revision-specific
 approval remains a workflow control outside the model. Verify in the sandbox
 that a fresh run retains prior answers and that neither the upstream skill nor
 the planner starts implementation before approval.
 
 ## Approval and event routing
 
-| Event                                        | Action                                                                           |
-| -------------------------------------------- | -------------------------------------------------------------------------------- |
-| Owner opens an issue                         | Planner investigates and asks questions or publishes a proposal                  |
-| Owner comments during discovery              | Planner continues the conversation                                               |
-| Owner applies `approved` to a ready proposal | Record the approved proposal revision, then start implementation                 |
-| Owner comments on an approved issue          | Ordinary comments do not restart discovery or implementation                     |
-| Owner explicitly requests replanning         | Clear approval and return to discovery; require approval of the revised proposal |
-| Owner comments `@claude` on the linked PR    | Implementer addresses the requested repairs within the approved scope            |
-| App pushes or opens a PR                     | Normal CI runs; Codex follows its configured review triggers                     |
-| Codex or App comments/reviews                | Feedback only; no automatic Claude invocation                                    |
+| Event                                                | Action                                                                                  |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Owner opens an issue                                 | Planner investigates and asks questions or publishes a proposal                         |
+| Owner comments during discovery                      | Planner continues the conversation                                                      |
+| Planner applies `ready`                              | Reviewer checks the proposal against the code and applies `reviewed` or removes `ready` |
+| Owner applies `ready for dev` to a reviewed proposal | Record the approved proposal revision, then start implementation                        |
+| Owner comments on an approved issue                  | Ordinary comments do not restart discovery or implementation                            |
+| Owner explicitly requests replanning                 | Clear approval and return to discovery; require approval of the revised proposal        |
+| Owner comments `@claude` on the linked PR            | Implementer addresses the requested repairs within the approved scope                   |
+| App pushes or opens a PR                             | Normal CI runs; Codex follows its configured review triggers                            |
+| Codex or App comments/reviews                        | Feedback only; no automatic Claude invocation                                           |
 
 Approval is enforced by `agents/approval.mjs`, invoked by the workflow.
 Recording hashes the exact issue body in the approval label event and requires
 the live body to match. Rerunning an old event cannot approve an edited
-proposal. Both `ready` and `approved` must still be present. Verification reads
-all comment pages and uses the latest App-authored approval marker, including
-revocations; a human-authored marker cannot establish approval.
+proposal. All of `ready`, `reviewed` and `ready for dev` must still be present.
+Verification reads all comment pages and uses the latest App-authored approval
+marker, including revocations; a human-authored marker cannot establish
+approval.
 
 Every record, clear, or verification checks the requesting actor's current
 repository write permission before making changes. Association with the
@@ -232,8 +236,8 @@ access, so the discovery role cannot write code however it is prompted.
 Retries resume the existing `claude/issue-<n>` branch and PR; they do not create
 duplicates or reset scope. A fixed `branch_name_template` is what makes that
 true — the action's default appends a timestamp, so every rerun would open a
-second branch and a second pull request. Provision the `ready` and `approved`
-labels during enrollment.
+second branch and a second pull request. Provision the `ready`, `reviewed` and
+`ready for dev` labels during enrollment.
 
 An unchanged approval whose digest is already the latest active record does not
 append another comment on retry. New records include the Actions run ID for

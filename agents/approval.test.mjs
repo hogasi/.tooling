@@ -10,13 +10,13 @@ const digestOf = (value) => createHash("sha256").update(value).digest("hex");
 const digest = digestOf(body);
 const issue = {
   body,
-  labels: [{ name: "ready" }, { name: "approved" }],
+  labels: [{ name: "ready" }, { name: "reviewed" }, { name: "ready for dev" }],
   number: 7
 };
 const context = {
   actor: "owner",
   appLogin,
-  event: { action: "labeled", issue, label: { name: "approved" } },
+  event: { action: "labeled", issue, label: { name: "ready for dev" } },
   issueNumber: "7",
   mode: "verify",
   repository: "hogasi/sandbox",
@@ -107,11 +107,11 @@ for (const mode of ["record", "verify", "clear"]) {
 for (const mode of ["record", "verify"]) {
   test(`${mode} rejects approval after the label is removed`, () => {
     const { request, writes } = fixture({
-      issue: { ...issue, labels: [{ name: "ready" }] }
+      issue: { ...issue, labels: [{ name: "ready" }, { name: "reviewed" }] }
     });
     assert.throws(
       () => applyApproval({ ...context, mode }, request),
-      /approved/
+      /ready for dev/
     );
     assert.equal(writes.length, 0);
   });
@@ -192,7 +192,7 @@ test("removing approval while queued prevents the implementation recheck", () =>
   const { request } = fixture({ issue: { ...issue, labels: [] } });
   assert.throws(
     () => applyApproval({ ...context, expectedDigest: digest }, request),
-    /approved/
+    /ready for dev/
   );
 });
 
@@ -211,11 +211,21 @@ test("retrying the same recorded approval does not append another record", () =>
   assert.equal(writes.length, 0);
 });
 
+test("an unreviewed proposal cannot be approved", () => {
+  const { request } = fixture({
+    issue: { ...issue, labels: [{ name: "ready" }, { name: "ready for dev" }] }
+  });
+  assert.throws(
+    () => applyApproval({ ...context, mode: "record" }, request),
+    /reviewed/
+  );
+});
+
 test("replanning removes the label and records revocation", () => {
   const { request, writes } = fixture();
   applyApproval({ ...context, mode: "clear" }, request);
   assert.equal(writes[0].method, "DELETE");
-  assert.match(writes[0].path, /labels\/approved$/);
+  assert.match(writes[0].path, /labels\/ready%20for%20dev$/);
   assert.match(writes[1].body.body, /approval cleared/);
 });
 

@@ -4,6 +4,8 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const marker = "<!-- hogasi-ai approval";
+const APPROVAL_LABELS = ["ready", "reviewed", "ready for dev"];
+const DEV_LABEL = "ready for dev";
 const digestOf = (body) => createHash("sha256").update(body).digest("hex");
 
 export function applyApproval(context, callGitHub = githubRequest) {
@@ -21,8 +23,11 @@ export function applyApproval(context, callGitHub = githubRequest) {
 
 function clearApproval(context, callGitHub, issue) {
   const path = `repos/${context.repository}/issues/${context.issueNumber}`;
-  if (issue.labels.some((label) => label.name === "approved")) {
-    callGitHub({ method: "DELETE", path: `${path}/labels/approved` });
+  if (issue.labels.some((label) => label.name === DEV_LABEL)) {
+    callGitHub({
+      method: "DELETE",
+      path: `${path}/labels/${encodeURIComponent(DEV_LABEL)}`
+    });
   }
   callGitHub({
     body: {
@@ -122,7 +127,7 @@ function recordApproval(context, callGitHub, issue) {
   if (latestApproval(context, callGitHub)?.digest !== digest) {
     callGitHub({
       body: {
-        body: `${marker} sha256=${digest} run=${context.runId} -->\nApproval bound to this proposal revision by @${context.actor}. Editing the proposal requires renewed approval.`
+        body: `${marker} sha256=${digest} run=${context.runId} -->\nPlan approved by @${context.actor} — implementation started. Editing the plan clears this approval.`
       },
       method: "POST",
       path: `repos/${context.repository}/issues/${context.issueNumber}/comments`
@@ -135,7 +140,7 @@ function requireApprovalEvent(context, issue) {
   const event = context.event;
   if (
     event?.action !== "labeled" ||
-    event.label?.name !== "approved" ||
+    event.label?.name !== DEV_LABEL ||
     event.issue?.number !== issue.number
   ) {
     throw new Error("Invalid approval event");
@@ -158,8 +163,11 @@ function requireAuthority(context, callGitHub) {
 
 function requireLabels(issue) {
   const labels = new Set(issue.labels.map((label) => label.name));
-  if (!labels.has("approved") || !labels.has("ready")) {
-    throw new Error("The proposal must have both ready and approved labels");
+  const missing = APPROVAL_LABELS.filter((label) => !labels.has(label));
+  if (missing.length > 0) {
+    throw new Error(
+      `The proposal is missing the ${missing.join(" and ")} label`
+    );
   }
 }
 
