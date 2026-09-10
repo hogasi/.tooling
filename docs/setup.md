@@ -367,3 +367,16 @@ Validate a known defective checkpoint → Astra finding → automatic Fable revi
 → fresh review, without an owner relay. Also test duplicate dispatch, forged
 sender/source and exhaustion. Automatic PR repairs and draft PR creation are the
 next increment; PR repairs still use owner @claude comments in this release.
+
+### Planner publication
+
+The planner model has read-only GitHub access and returns a structured proposal
+or discovery question. Trusted `agents/planning-run.mjs` captures the request
+before the model runs and publishes its validated result afterward: immutable
+checkpoint first, maintained summary second, review label last. Publication
+failure fails the job. The model cannot edit the original issue or authorize
+implementation. `agents/planning.mjs` rejects changed scope, closed issues,
+development authorization and malformed output before writes.
+
+This is required because the GitHub MCP server bundled with the pinned Claude
+action can create issue comments but cannot edit an existing summary comment.

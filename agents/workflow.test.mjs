@@ -316,3 +316,29 @@ test("automatic planner reactions target the resolved issue without an issue eve
   assert.match(target, /needs.route.outputs.issue/);
   assert.doesNotMatch(target, /github.event.issue.number/);
 });
+
+test("the planner model reads only and trusted publication completes before the job succeeds", () => {
+  const planner = job("plan");
+  const model = planner
+    .split("uses: anthropics/claude-code-action", 2)[1]
+    .split("- name: Publish", 1)[0];
+  const reader = planner.split("id: reader-token", 2)[1].split("- name:", 1)[0];
+  assert.match(
+    model,
+    /github_token: \$\{\{ steps.reader-token.outputs.token \}\}/
+  );
+  assert.doesNotMatch(reader, /permission-\w+: write/);
+  assert.match(model, /--json-schema/);
+  assert.match(
+    planner,
+    /PLANNER_RESULT: \$\{\{ steps.planner.outputs.structured_output \}\}/
+  );
+  assert.ok(
+    planner.indexOf('planning-run.mjs" capture') <
+      planner.indexOf("uses: anthropics/claude-code-action")
+  );
+  assert.ok(
+    planner.indexOf('planning-run.mjs" publish') >
+      planner.indexOf("uses: anthropics/claude-code-action")
+  );
+});
