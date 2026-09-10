@@ -84,13 +84,13 @@ jobs:
           AI_DEFAULT_EFFORT: high
           AI_DEFAULT_IMPLEMENTER_MODEL: opus
           AI_DEFAULT_PLANNER_MODEL: fable
-          AI_DEFAULT_REVIEWER_MODEL: opus
+          AI_DEFAULT_PLAN_REVIEWER_MODEL: opus
           AI_IMPLEMENTER_EFFORT: ${{ vars.AI_IMPLEMENTER_EFFORT }}
           AI_IMPLEMENTER_MODEL: ${{ vars.AI_IMPLEMENTER_MODEL }}
           AI_PLANNER_EFFORT: ${{ vars.AI_PLANNER_EFFORT }}
           AI_PLANNER_MODEL: ${{ vars.AI_PLANNER_MODEL }}
-          AI_REVIEWER_EFFORT: ${{ vars.AI_REVIEWER_EFFORT }}
-          AI_REVIEWER_MODEL: ${{ vars.AI_REVIEWER_MODEL }}
+          AI_PLAN_REVIEWER_EFFORT: ${{ vars.AI_PLAN_REVIEWER_EFFORT }}
+          AI_PLAN_REVIEWER_MODEL: ${{ vars.AI_PLAN_REVIEWER_MODEL }}
           AI_ROLES: ${{ vars.AI_ROLES }}
           # The App's own login, so the router can tell the planner's `ready`
           # label from every other bot event, which it still refuses.
@@ -337,12 +337,12 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions/${REACTION}" --method DELETE
           gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions" --method POST -f "content=${content}"
 
-  review:
-    name: Review
+  plan-review:
+    name: Plan review
     needs: [route, approval]
     if:
       always() && needs.route.result == 'success' && needs.route.outputs.role ==
-      'reviewer' && (needs.approval.result == 'success' ||
+      'plan-reviewer' && (needs.approval.result == 'success' ||
       (needs.route.outputs.approval == 'none' && needs.approval.result ==
       'skipped'))
     runs-on: ubuntu-24.04
@@ -350,7 +350,8 @@ jobs:
     # Superseded discovery is worth cancelling: the newer comment contains the
     # answers the older run was about to ask for again.
     concurrency:
-      group: ai-review-${{ github.repository }}-${{ needs.route.outputs.issue }}
+      group:
+        ai-plan-review-${{ github.repository }}-${{ needs.route.outputs.issue }}
       cancel-in-progress: true
     permissions:
       contents: read
@@ -416,7 +417,7 @@ jobs:
           delimiter="PROMPT_$(openssl rand -hex 16)"
           {
             printf 'text<<%s\n' "$delimiter"
-            cat "${RUNNER_TEMP}/tooling/agents/reviewer.md"
+            cat "${RUNNER_TEMP}/tooling/agents/plan-reviewer.md"
             printf '\n'
             cat "${RUNNER_TEMP}/tooling/agents/voice.md"
             printf '\n## This run\n\n- Repository: %s\n- Issue: #%s\n- Model: %s at %s effort\n' \

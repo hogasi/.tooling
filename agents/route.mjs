@@ -166,7 +166,7 @@ const routeIssueLabeled = ({ labelName, labels }) => {
     return {
       approval: "none",
       reason: "the planner marked the proposal ready for review",
-      role: "reviewer"
+      role: "plan-reviewer"
     };
   }
 
@@ -185,7 +185,7 @@ const routeIssueLabeled = ({ labelName, labels }) => {
 
 /**
  * `ready` says the planner has nothing material left to decide and `reviewed`
- * says the reviewer found nothing to fix. Approving without either approves a
+ * says the plan reviewer found nothing to fix. Approving without either approves a
  * proposal that is still moving, so it fails rather than implementing.
  */
 const requireReviewedProposal = (labels) => {
@@ -196,7 +196,7 @@ const requireReviewedProposal = (labels) => {
   if (missing.length > 0) {
     throw new Error(
       `Approved without the ${missing.join(" and ")} label. The planner ` +
-        `applies ${READY_LABEL} and the reviewer applies ${REVIEWED_LABEL}.`
+        `applies ${READY_LABEL} and the plan reviewer applies ${REVIEWED_LABEL}.`
     );
   }
 };
@@ -326,19 +326,19 @@ const ROLE_SETTINGS = new Map([
     })
   ],
   [
+    "plan-reviewer",
+    (environment) => ({
+      defaultModel: environment.AI_DEFAULT_PLAN_REVIEWER_MODEL,
+      effort: environment.AI_PLAN_REVIEWER_EFFORT,
+      model: environment.AI_PLAN_REVIEWER_MODEL
+    })
+  ],
+  [
     "planner",
     (environment) => ({
       defaultModel: environment.AI_DEFAULT_PLANNER_MODEL,
       effort: environment.AI_PLANNER_EFFORT,
       model: environment.AI_PLANNER_MODEL
-    })
-  ],
-  [
-    "reviewer",
-    (environment) => ({
-      defaultModel: environment.AI_DEFAULT_REVIEWER_MODEL,
-      effort: environment.AI_REVIEWER_EFFORT,
-      model: environment.AI_REVIEWER_MODEL
     })
   ]
 ]);

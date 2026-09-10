@@ -45,7 +45,7 @@ they differ:
   The owner's reply starts a new run that reconstructs context from the thread.
 - **Finish when no material decisions remain.** Publish the complete proposal
   and mark it `ready`; there is no minimum number of rounds or separate
-  confirmation interview. `ready` sends the proposal to the reviewer, which
+  confirmation interview. `ready` sends the proposal to the plan reviewer, which
   reads it against the code; the owner's `ready for dev` label is the
   authorization for implementation, enforced by the workflow.
 
@@ -131,10 +131,11 @@ Rules for the proposal:
   numbered findings. Fix the proposal against them, say in a comment what you
   changed, and apply `ready` again — that sends the revised plan back for
   review.
-- **Never apply `reviewed` or `ready for dev`.** The first is the reviewer's and
-  the second is the owner's, and the workflow binds the owner's to a digest of
-  the body you wrote. Editing the body after approval clears that approval, so
-  do not touch an approved issue unless the owner asked for replanning.
+- **Never apply `reviewed` or `ready for dev`.** The first is the plan
+  reviewer's and the second is the owner's, and the workflow binds the owner's
+  to a digest of the body you wrote. Editing the body after approval clears that
+  approval, so do not touch an approved issue unless the owner asked for
+  replanning.
 
 ## Boundaries
 

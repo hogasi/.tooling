@@ -71,20 +71,20 @@ is one the CLI accepts. It is a module with tests rather than a `case` statement
 in YAML so the sandbox can exercise the routing table without spending
 subscription quota.
 
-| Setting                                | Canonical location                                                        | Override or enrollment                                                          |
-| -------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Planner model                          | Planner job in `.github/workflows/ai.yml`: `fable`                        | `AI_PLANNER_MODEL` Actions variable                                             |
-| Reviewer model                         | Review job in `.github/workflows/ai.yml`: `opus`                          | `AI_REVIEWER_MODEL` Actions variable                                            |
-| Implementer model                      | Implementer job in `.github/workflows/ai.yml`: `opus`                     | `AI_IMPLEMENTER_MODEL` Actions variable                                         |
-| Claude effort                          | Role jobs in `ai.yml`: start at `high`                                    | `AI_PLANNER_EFFORT`, `AI_REVIEWER_EFFORT`, `AI_IMPLEMENTER_EFFORT`              |
-| Turn limits and timeouts               | Explicit per-role values in `ai.yml`, chosen and exercised in the sandbox | Change through a tooling PR                                                     |
-| Role enablement                        | `vars.AI_ROLES` checked by `ai.yml`; unset means disabled                 | GitHub Actions variable: `planner`, then `planner,reviewer,implementer`         |
-| Role behavior                          | `agents/planner.md`, `agents/reviewer.md` and `agents/implementer.md`     | Consumer conventions in its own `AGENTS.md`                                     |
-| Discovery method                       | `agents/skills/grilling/SKILL.md`                                         | GitHub adaptation in `agents/planner.md`                                        |
-| Review instructions                    | `agents/review-guidelines.md`                                             | Copied into consumer `AGENTS.md`; subsequently owned by that repo               |
-| Codex model and automatic reviews      | Codex settings for the linked account/repository                          | Verify Astra selection there; workflow variables cannot select the hosted model |
-| Claude OAuth token and App credentials | GitHub organization Actions secrets                                       | Explicitly granted to each enrolled repository and forwarded by its caller      |
-| Required checks and branch rules       | GitHub repository or scoped organization rulesets                         | Enrollment checklist in [setup.md](setup.md)                                    |
+| Setting                                | Canonical location                                                         | Override or enrollment                                                          |
+| -------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Planner model                          | Planner job in `.github/workflows/ai.yml`: `fable`                         | `AI_PLANNER_MODEL` Actions variable                                             |
+| Plan reviewer model                    | Plan review job in `.github/workflows/ai.yml`: `opus`                      | `AI_PLAN_REVIEWER_MODEL` Actions variable                                       |
+| Implementer model                      | Implementer job in `.github/workflows/ai.yml`: `opus`                      | `AI_IMPLEMENTER_MODEL` Actions variable                                         |
+| Claude effort                          | Role jobs in `ai.yml`: start at `high`                                     | `AI_PLANNER_EFFORT`, `AI_PLAN_REVIEWER_EFFORT`, `AI_IMPLEMENTER_EFFORT`         |
+| Turn limits and timeouts               | Explicit per-role values in `ai.yml`, chosen and exercised in the sandbox  | Change through a tooling PR                                                     |
+| Role enablement                        | `vars.AI_ROLES` checked by `ai.yml`; unset means disabled                  | GitHub Actions variable: `planner`, then `planner,plan-reviewer,implementer`    |
+| Role behavior                          | `agents/planner.md`, `agents/plan-reviewer.md` and `agents/implementer.md` | Consumer conventions in its own `AGENTS.md`                                     |
+| Discovery method                       | `agents/skills/grilling/SKILL.md`                                          | GitHub adaptation in `agents/planner.md`                                        |
+| Review instructions                    | `agents/review-guidelines.md`                                              | Copied into consumer `AGENTS.md`; subsequently owned by that repo               |
+| Codex model and automatic reviews      | Codex settings for the linked account/repository                           | Verify Astra selection there; workflow variables cannot select the hosted model |
+| Claude OAuth token and App credentials | GitHub organization Actions secrets                                        | Explicitly granted to each enrolled repository and forwarded by its caller      |
+| Required checks and branch rules       | GitHub repository or scoped organization rulesets                          | Enrollment checklist in [setup.md](setup.md)                                    |
 
 Model and effort defaults are executable workflow settings, not prompt front
 matter requiring a custom parser. `ai.yml` passes the resolved values through
@@ -185,8 +185,8 @@ plan written on the planner's own recommended answers read as settled and anchor
 the owner to choices they never made. Each decision records where it was settled
 — the owner's comment, or the file that answered it — so the proposal stays
 traceable to the exchange behind it. There is no additional confirmation round:
-the reviewer reads the plan against the code and applies `reviewed`, and the
-owner applies `ready for dev` to authorize implementation. Revision-specific
+the plan reviewer reads the plan against the code and applies `reviewed`, and
+the owner applies `ready for dev` to authorize implementation. Revision-specific
 approval remains a workflow control outside the model. Verify in the sandbox
 that a fresh run retains prior answers and that neither the upstream skill nor
 the planner starts implementation before approval.

@@ -460,7 +460,7 @@ test("the ready label sends the proposal to review", () => {
     ownerEvent({ action: "labeled", labelName: "ready", labels: ["ready"] })
   );
 
-  assert.equal(route.role, "reviewer");
+  assert.equal(route.role, "plan-reviewer");
   assert.equal(route.approval, "none");
 });
 
@@ -477,7 +477,7 @@ test("the planner's own ready label starts a review", () => {
     })
   );
 
-  assert.equal(route.role, "reviewer");
+  assert.equal(route.role, "plan-reviewer");
 });
 
 test("re-adding ready reviews the revised proposal again", () => {
@@ -491,7 +491,7 @@ test("re-adding ready reviews the revised proposal again", () => {
     })
   );
 
-  assert.equal(route.role, "reviewer");
+  assert.equal(route.role, "plan-reviewer");
 });
 
 test("the App gets no other exemption from the bot rule", () => {
@@ -550,7 +550,7 @@ test("approving a proposal the reviewer has not passed fails loudly", () => {
   );
 });
 
-test("the reviewer is enrolled separately from the planner", () => {
+test("the plan reviewer is enrolled separately from the planner", () => {
   const environment = {
     AI_ROLES: "planner",
     EVENT_ACTION: "labeled",
@@ -565,17 +565,17 @@ test("the reviewer is enrolled separately from the planner", () => {
 
   assert.equal(decide(environment).role, "");
   assert.equal(
-    decide({ ...environment, AI_ROLES: "planner,reviewer" }).role,
-    "reviewer"
+    decide({ ...environment, AI_ROLES: "planner,plan-reviewer" }).role,
+    "plan-reviewer"
   );
 });
 
-test("the reviewer resolves its own model and effort", () => {
+test("the plan reviewer resolves its own model and effort", () => {
   assert.deepEqual(
-    settingsFor("reviewer", {
+    settingsFor("plan-reviewer", {
       AI_DEFAULT_EFFORT: "high",
-      AI_DEFAULT_REVIEWER_MODEL: "opus",
-      AI_REVIEWER_EFFORT: "max"
+      AI_DEFAULT_PLAN_REVIEWER_MODEL: "opus",
+      AI_PLAN_REVIEWER_EFFORT: "max"
     }),
     { effort: "max", model: "opus" }
   );

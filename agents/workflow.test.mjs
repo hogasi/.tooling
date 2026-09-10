@@ -14,9 +14,9 @@ const condition = (name) =>
     .match(/\n {4}if:\n([\s\S]*?)\n {4}runs-on:/)[1]
     .trim();
 const jobFor = {
-  implementer: "implement",
-  planner: "plan",
-  reviewer: "review"
+  "implementer": "implement",
+  "plan-reviewer": "plan-review",
+  "planner": "plan"
 };
 const eligible = ({ approval, role, route }) =>
   runInNewContext(condition(jobFor[role]), {
@@ -34,7 +34,7 @@ const eligible = ({ approval, role, route }) =>
   });
 
 for (const route of ["failure", "cancelled", "skipped"]) {
-  for (const role of ["planner", "implementer", "reviewer"]) {
+  for (const role of ["planner", "implementer", "plan-reviewer"]) {
     test(`${role} never starts after ${route} routing`, () => {
       assert.equal(eligible({ approval: "skipped", role, route }), false);
     });
@@ -108,13 +108,13 @@ test("routing reads the sender's real permission before deciding", () => {
   );
 });
 
-for (const role of ["plan", "review", "implement"]) {
+for (const role of ["plan", "plan-review", "implement"]) {
   test(`the ${role} job grants the GitHub tools agent mode installs on demand`, () => {
     assert.match(job(role), /--allowedTools\n\s+'mcp__github__\*'/);
   });
 }
 
-for (const role of ["plan", "review", "implement"]) {
+for (const role of ["plan", "plan-review", "implement"]) {
   test(`the ${role} job marks the thread before the model starts and after it ends`, () => {
     const steps = job(role);
     const started = steps.indexOf("content=eyes");
@@ -127,7 +127,7 @@ for (const role of ["plan", "review", "implement"]) {
   });
 }
 
-for (const role of ["plan", "review", "implement"]) {
+for (const role of ["plan", "plan-review", "implement"]) {
   test(`the ${role} job installs the coding style as user memory`, () => {
     assert.match(
       job(role),
@@ -138,23 +138,26 @@ for (const role of ["plan", "review", "implement"]) {
 
 test("review can start without an approval job", () => {
   assert.equal(
-    eligible({ approval: "skipped", role: "reviewer", route: "success" }),
+    eligible({ approval: "skipped", role: "plan-reviewer", route: "success" }),
     true
   );
 });
 
-test("a stale pass is retracted before the reviewer runs", () => {
-  const review = job("review");
+test("a stale pass is retracted before the plan reviewer runs", () => {
+  const review = job("plan-review");
   const retract = review.indexOf("labels/reviewed");
   const action = review.indexOf("uses: anthropics/claude-code-action@");
 
-  assert.ok(retract > 0, "The review job never retracts the reviewed label");
+  assert.ok(
+    retract > 0,
+    "The plan review job never retracts the reviewed label"
+  );
   assert.ok(retract < action);
   assert.match(review, /--method DELETE/);
 });
 
-test("the reviewer cannot write code or open a pull request", () => {
-  const review = job("review");
+test("the plan reviewer cannot write code or open a pull request", () => {
+  const review = job("plan-review");
 
   assert.match(review, /permission-contents: read/);
   assert.match(review, /permission-issues: write/);
