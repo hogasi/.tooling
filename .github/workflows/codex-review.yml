@@ -1,0 +1,95 @@
+name: Codex subscription check
+
+on:
+  workflow_call:
+    secrets:
+      AI_APP_ID:
+        required: true
+      AI_APP_PRIVATE_KEY:
+        required: true
+
+permissions: {}
+
+jobs:
+  subscription:
+    # Account-auth automation is restricted to trusted private repositories.
+    if: >-
+      github.event.repository.private == true && github.ref ==
+      format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: codex-review
+    concurrency:
+      # silviu: one consumer per login; centralize execution before sharing it across repos.
+      group: codex-subscription
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          persist-credentials: false
+          path: _tooling
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+
+      - name: Install the pinned Codex CLI
+        run: npm install --global @openai/codex@0.154.0
+
+      - name: Restore the subscription login
+        id: auth
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+        run: node _tooling/agents/codex-auth.mjs restore
+
+      - name: Check Astra medium access
+        id: codex
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-review-auth
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/codex-smoke"
+          cd "${RUNNER_TEMP}/codex-smoke"
+          codex exec --ignore-user-config --ignore-rules --ephemeral \
+            --skip-git-repo-check --sandbox read-only \
+            --model gpt-6-astra -c 'model_reasoning_effort="medium"' \
+            --output-last-message "${RUNNER_TEMP}/codex-smoke-result" \
+            'Do not use tools. Reply with exactly OK.' >/dev/null 2>/dev/null
+          test "$(cat "${RUNNER_TEMP}/codex-smoke-result")" = OK
+
+      # Mint this only after Codex exits; the model never receives update authority.
+      - uses: actions/create-github-app-token@v3.2.0
+        id: persistence-token
+        if: always() && steps.auth.outcome == 'success'
+        with:
+          client-id: ${{ secrets.AI_APP_ID }}
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+          permission-environments: write
+          permission-metadata: read
+
+      - name: Persist the refreshed login
+        if:
+          always() && steps.auth.outcome == 'success' &&
+          steps.persistence-token.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.persistence-token.outputs.token }}
+        run: node _tooling/agents/codex-auth.mjs persist
+
+      - name: Remove runner credentials
+        if: always()
+        run: node _tooling/agents/codex-auth.mjs clear
+
+      - name: Report the subscription check
+        if: always()
+        env:
+          OUTCOME: ${{ job.status }}
+        run: |
+          printf 'Astra medium subscription check: %s\n' "$OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$OUTCOME" != success ]; then
+            echo '::error::Subscription check failed. Check account/model access and environment write permission; reseed the login if persistence failed. No API fallback was used.'
+          fi

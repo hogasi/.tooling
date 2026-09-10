@@ -75,12 +75,18 @@ in step 4 has been applied or verified against GitHub.
      `AI_IMPLEMENTER_MODEL`, `AI_PLANNER_EFFORT`, `AI_PLAN_REVIEWER_EFFORT`, or
      `AI_IMPLEMENTER_EFFORT` Actions variables when overriding those defaults.
      Variables on the tooling repository alone do not configure consumers.
-   - Connect each enrolled repo in Codex settings and enable automatic reviews.
-     Verify whether GPT-6 Astra can be selected and record the actual model
-     selection capability. Hosted review cannot be configured by an
-     `AI_PLAN_REVIEWER_MODEL` workflow variable. If exact Astra selection is
-     unavailable, obtain an explicit decision before adopting another model or
-     an API-backed reviewer. Verify App-authored PRs and follow-up reviews.
+   - The approved replacement is Astra medium for both reviews, using the Codex
+     subscription in GitHub-hosted Actions. Start with the subscription check
+     below. The existing Claude plan reviewer and hosted PR-review route remain
+     in place until this check passes and the replacement is implemented. Do not
+     enable both PR-review routes together.
+   - For the existing hosted route, connect each enrolled repo in Codex settings
+     and enable automatic reviews. Verify whether GPT-6 Astra can be selected
+     and record the actual model selection capability. Hosted review cannot be
+     configured by an `AI_PLAN_REVIEWER_MODEL` workflow variable. If exact Astra
+     selection is unavailable, obtain an explicit decision before adopting
+     another model or an API-backed reviewer. Verify App-authored PRs and
+     follow-up reviews.
    - Create the `hogasi-ai` GitHub App with webhook **off**. Grant contents,
      pull requests, and issues read/write, plus metadata, actions and
      administration read — actions read is how a repair reads its own failing
@@ -141,3 +147,77 @@ in step 4 has been applied or verified against GitHub.
 5. **Drop the `delete_repo` scope** now that the personal repo is deleted. If
    the token still carries it, remove it with:
    `gh auth refresh -h github.com -r delete_repo`.
+
+## Astra subscription preflight
+
+The first implementation step adds
+[the subscription check](../.github/workflows/codex-review.yml). It does not yet
+replace either reviewer. It proves `gpt-6-astra` at `medium` reasoning on a
+GitHub-hosted runner before we connect the issue and PR routes. Light is called
+`low` in the CLI; compare it with medium on known defects before changing
+defaults.
+
+Use only a trusted **private** consumer, initially `hogasi/ai-sandbox`. Do not
+run account-auth automation in public `.tooling`, copy the login to other
+consumers, or share it with a desktop session. A shared login across
+repositories needs a central execution queue; repository concurrency groups
+cannot provide that lock.
+
+1. Create the `codex-review` GitHub environment in the consumer. Restrict its
+   deployment branches to the default branch. The workflow itself also rejects
+   public repositories and non-default branches. Limit workflow editing to
+   trusted maintainers.
+2. Grant the GitHub App repository **Environments: write** and accept the
+   updated installation permissions. Existing jobs request explicit permissions;
+   only the credential-persistence step requests this new grant, after Codex
+   exits.
+3. Use a current Codex CLI on a trusted local machine to create a dedicated
+   login in a separate credential directory. Configure file-backed credential
+   storage, authenticate using your subscription, and seed `CODEX_AUTH_JSON` as
+   an **environment secret** in `codex-review`. Never paste its contents in
+   chat, issues or logs. Do not create an API key or enable paid overage.
+4. Commit the tooling change and use its full commit SHA in this temporary
+   consumer caller, committed to the consumer's default branch:
+
+   ```yaml
+   name: Codex subscription check
+   on:
+     workflow_dispatch:
+   jobs:
+     check:
+       uses: hogasi/.tooling/.github/workflows/codex-review.yml@FULL_COMMIT_SHA
+       permissions:
+         contents: read
+       secrets:
+         AI_APP_ID: ${{ secrets.AI_APP_ID }}
+         AI_APP_PRIVATE_KEY: ${{ secrets.AI_APP_PRIVATE_KEY }}
+   ```
+
+   `CODEX_AUTH_JSON` belongs to the called job's environment; do not forward it
+   as a repository secret. Environment secrets are read when the job starts, so
+   a waiting job sees the preceding job's credential update.
+
+5. Run it twice, then queue three runs. Confirm all execute, the model check
+   passes, persistence succeeds, and the environment secret's update timestamp
+   advances. These calls consume subscription allowance and Actions minutes.
+   They do not prove long-term token renewal; the local synthetic rotation test
+   verifies write-back of changed credentials, and live renewal must be
+   observed.
+
+The runner pins Codex `0.154.0`, uses an empty working directory, and reads no
+consumer code. It saves the current login even if the model fails, then deletes
+the runner's authentication directory. Model output is not logged. A failed step
+produces a failed run and a short recovery message; it never falls back to the
+API. A hard runner termination can prevent persistence. If a login is lost or
+revoked, stop queued runs, reseed it and repeat this check.
+
+After this check passes, the remaining approved work is to replace Claude plan
+review, bind its verdict to the proposal revision, and add PR review for the
+exact diff and approved proposal. Both will share this serialized login flow.
+
+Sources:
+[Codex account auth in CI](https://learn.chatgpt.com/docs/auth/ci-cd-auth),
+[model and effort selection](https://learn.chatgpt.com/docs/models),
+[GitHub secret timing](https://docs.github.com/en/actions/reference/security/secrets),
+and
+[concurrency queues](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
