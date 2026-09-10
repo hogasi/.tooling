@@ -129,7 +129,7 @@ test("publishes a COMMENT review tied to the head, never a merge approval", () =
   assert.equal(writes[0].body.commit_id, sha("b"));
   assert.match(writes[0].body.body, /No defects found/);
 });
-test("findings publish as feedback without requesting repairs", () => {
+test("findings publish authenticated repair evidence without synthetic commands", () => {
   const { callGitHub, writes } = fixture();
   publishPullRequestReview(
     {
@@ -145,6 +145,8 @@ test("findings publish as feedback without requesting repairs", () => {
   );
   assert.equal(writes[0].body.event, "COMMENT");
   assert.match(writes[0].body.body, /src\/greet.js:10/);
+  assert.match(writes[0].body.body, /"status":"changes_requested"/);
+  assert.match(writes[0].body.body, /"run":"123"/);
   assert.doesNotMatch(writes[0].body.body, /@claude/);
 });
 for (const change of [

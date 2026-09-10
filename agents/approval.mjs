@@ -37,8 +37,17 @@ export function readApprovedProposal(context, callGitHub = githubRequest) {
   requireDevLabel(issue);
   const proposal = readProposal(context, callGitHub);
   const event = readDevEvent(context, callGitHub);
-  verifyApproval(context, { event, proposal }, callGitHub);
-  return { digest: proposal.digest, issue, proposal };
+  const authorization = verifyApproval(
+    context,
+    { event, proposal },
+    callGitHub
+  );
+  return {
+    actor: authorization.actor,
+    digest: proposal.digest,
+    issue,
+    proposal
+  };
 }
 
 function clearApproval(context, issue, callGitHub) {

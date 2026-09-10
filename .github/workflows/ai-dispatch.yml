@@ -2,9 +2,15 @@ name: AI correction handoff
 on:
   workflow_call:
     inputs:
+      phase:
+        type: string
+        default: planner
+      pull-request:
+        type: string
+        default: ""
       issue:
         type: string
-        required: true
+        default: ""
       source:
         type: string
         required: true
@@ -34,6 +40,8 @@ jobs:
         with:
           client-id: ${{ secrets.AI_APP_ID }}
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+          permission-actions: read
+          permission-pull-requests: read
           permission-contents: write
           permission-issues: read
           permission-metadata: read
@@ -43,6 +51,15 @@ jobs:
           APP_LOGIN: ${{ steps.token.outputs.app-slug }}[bot]
           REVIEWER_LOGIN:
             ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
+          AI_CI_WORKFLOW: ${{ vars.AI_CI_WORKFLOW }}
+          PHASE: ${{ inputs.phase }}
+          PULL_REQUEST: ${{ inputs.pull-request }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           ISSUE: ${{ inputs.issue }}
           SOURCE_RUN: ${{ inputs.source }}
-        run: node agents/automation.mjs dispatch
+        run: |
+          case "$PHASE" in
+            planner) node agents/automation.mjs dispatch ;;
+            implementer) node agents/repair-run.mjs dispatch ;;
+            *) echo 'Invalid correction phase' >&2; exit 1 ;;
+          esac

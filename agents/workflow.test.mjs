@@ -342,3 +342,30 @@ test("the planner model reads only and trusted publication completes before the 
       planner.indexOf("uses: anthropics/claude-code-action")
   );
 });
+
+test("automatic repairs verify the recorded owner and claim work inside the shared writer queue", () => {
+  const approval = job("approval");
+  const implementer = job("implement");
+  assert.match(
+    approval,
+    /ACTOR: \$\{\{ needs.route.outputs.owner \|\| github.actor \}\}/
+  );
+  assert.match(
+    implementer,
+    /ACTOR: \$\{\{ needs.route.outputs.owner \|\| github.actor \}\}/
+  );
+  assert.match(implementer, /queue: max/);
+  assert.match(
+    implementer,
+    /EXPECTED_HEAD: \$\{\{ needs.route.outputs.head \}\}/
+  );
+  assert.ok(
+    implementer.indexOf('repair-run.mjs" claim') <
+      implementer.indexOf("uses: anthropics/claude-code-action")
+  );
+  assert.match(implementer, /if: steps.correction.outputs.claimed == 'true'/);
+  assert.match(
+    implementer,
+    /allowed_bots:[\s\S]*?needs.route.outputs.automatic == 'true'/
+  );
+});

@@ -7,10 +7,14 @@ after this job left its queue and before granting write access. The
 authenticated checkpoint is the scope; labels and editable summaries are
 navigation only. You implement that approved proposal — nothing else.
 
-You are started in one of two situations:
+You are started in one of these situations:
 
 - **The owner approved a proposal.** Implement it, write tests, run the checks,
   and open a pull request.
+- **Trusted CI or reviewer findings require a repair.** Read the current
+  evidence and correct defects within the approved scope on the same branch. The
+  workflow validates evidence and claims the attempt under the issue writer
+  lock.
 - **The owner asked for a repair** with `@claude` on the pull request. Read what
   they asked for, fix it on the same branch, and report back.
 
@@ -39,7 +43,8 @@ check has to fail before your change and pass after it. A criterion about
 browser behaviour needs an E2E test; a unit test does not demonstrate what a
 browser does.
 
-Run the repository's own gates before you push:
+After the first useful draft commit, run the repository's own gates before
+marking the PR ready for review:
 
 ```
 pnpm check · pnpm build · pnpm test:e2e
@@ -58,8 +63,14 @@ plainly.
   rather than starting another one.
 - Commit in logical steps with `<type>: <description>` subjects — `feat`, `fix`,
   `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
-- Open one pull request per issue, with `Closes #<n>` in the body so merging
-  closes the issue.
+- Push the first useful commit and immediately open one **draft** pull request
+  per issue, with `Closes #<n>` in its body. Record unfinished checks clearly.
+  Continue on that draft; do not wait until all implementation is finished to
+  make the work visible. Reuse any existing PR.
+- Keep the PR draft while working and during repairs. Mark it ready only after
+  all scoped work and repository checks pass. If blocked, leave it draft and
+  report the concrete missing decision or infrastructure failure. The trusted
+  router ignores draft pushes; its writer lock serializes queued repairs.
 - The body says what changed, which acceptance criteria each part satisfies, and
   how it was verified — with the commands and their results. List anything you
   could not verify under its own heading.
@@ -68,7 +79,11 @@ plainly.
 
 ## Repairs
 
-A repair is a scoped follow-up, not a new round of implementation:
+A repair is a scoped follow-up, not a new round of implementation. Automatic
+attempts are limited to three per cycle; CI and review events for the same input
+share a claim. Successful CI and review finish the cycle. An owner `@claude`
+request explicitly resumes it after exhaustion. Do not self-trigger retries for
+account, quota, runner or missing-permission failures.
 
 - Read the failing check's logs and the review findings for yourself. You have
   read access to Actions logs, so do not ask the owner to paste them.

@@ -5,6 +5,8 @@
 paths:
   .github/workflows/ai.yml:
     ignore:
+      # GitHub queue:max is documented; actionlint 1.7.12 predates it.
+      - 'unexpected key "queue" for "concurrency" section'
       - 'property "workflow_(sha|repository)" is not defined in object type'
   .github/workflows/codex-review.yml:
     ignore:

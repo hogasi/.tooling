@@ -38,3 +38,19 @@ test("the routing CLI preserves human discovery and rejects a forged automatic s
     /Untrusted correction sender/
   );
 });
+
+test("workflow completion is inert while implementation is disabled", (context) => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "route-disabled-ci-"));
+  context.after(() => rmSync(directory, { force: true, recursive: true }));
+  const output = path.join(directory, "output");
+  execFileSync(process.execPath, [runner], {
+    env: {
+      ...process.env,
+      AI_ROLES: "planner",
+      EVENT_NAME: "workflow_run",
+      GITHUB_OUTPUT: output
+    }
+  });
+  assert.match(readFileSync(output, "utf8"), /implementer is not in AI_ROLES/);
+  assert.doesNotMatch(readFileSync(output, "utf8"), /role=implementer/);
+});
