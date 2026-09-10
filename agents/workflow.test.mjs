@@ -105,3 +105,16 @@ for (const role of ["plan", "implement"]) {
     assert.match(job(role), /--allowedTools\n\s+'mcp__github__\*'/);
   });
 }
+
+for (const role of ["plan", "implement"]) {
+  test(`the ${role} job marks the thread before the model starts and after it ends`, () => {
+    const steps = job(role);
+    const started = steps.indexOf("content=eyes");
+    const action = steps.indexOf("uses: anthropics/claude-code-action@");
+    const outcome = steps.indexOf("Replace the reaction with the outcome");
+
+    assert.ok(started > 0 && started < action);
+    assert.ok(outcome > action);
+    assert.match(steps.slice(outcome), /if: always\(\)/);
+  });
+}
