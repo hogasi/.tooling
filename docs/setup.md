@@ -115,6 +115,8 @@ evidence is recorded below; other repositories need their own enrollment.
          types: [created]
        pull_request_target:
          types: [opened, ready_for_review, synchronize]
+       repository_dispatch:
+         types: [ai-correction]
 
      jobs:
        ai:
@@ -340,3 +342,28 @@ Sources:
 [GitHub secret timing](https://docs.github.com/en/actions/reference/security/secrets),
 and
 [concurrency queues](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+
+## Automatic plan corrections
+
+After pinning this release, add the repository_dispatch trigger above. The
+review workflow dispatches only current changes-requested findings. The receiver
+requires the builder App as sender, verifies the source workflow and completed
+plan-review job, and re-reads the current checkpoint and reviewer record.
+
+The planner shares one serialized issue queue with human planning runs. Before
+invoking Fable it claims an attempt in a maintained correction record. Duplicate
+evidence spends nothing. Three attempts persist across new proposal revisions;
+further automatic work sets blocked and stops. An authorized human planning
+reply explicitly resumes the conversation and resets that cycle. Missing scope
+or product decisions still require the owner.
+
+Only the verified automatic planner invocation allows the exact builder bot in
+Claude's actor check. Other bot comments remain excluded. The dispatcher has a
+separate short-lived builder token with Contents write (required for repository
+dispatch) and Issues read; the planner itself still cannot write code. Reviewer
+credentials are not passed to this dispatcher or to Claude.
+
+Validate a known defective checkpoint → Astra finding → automatic Fable revision
+→ fresh review, without an owner relay. Also test duplicate dispatch, forged
+sender/source and exhaustion. Automatic PR repairs and draft PR creation are the
+next increment; PR repairs still use owner @claude comments in this release.

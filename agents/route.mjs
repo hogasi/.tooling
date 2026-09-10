@@ -12,9 +12,6 @@
  *   command line, so an unrecognised one fails the run rather than being
  *   passed through.
  */
-import { appendFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import { routePullRequest } from "./pull-request.mjs";
 
 const AUTHORIZED_ASSOCIATIONS = new Set(["COLLABORATOR", "MEMBER", "OWNER"]);
@@ -198,12 +195,9 @@ const routeIssueLabeled = ({ labelName, labels }) => {
  * the checkpoint and owner event before authorizing any implementation.
  */
 const requireReviewedProposal = (labels) => {
-  const missing = [REVIEWED_LABEL].filter((label) => !labels.includes(label));
-
-  if (missing.length > 0) {
+  if (!labels.includes(REVIEWED_LABEL)) {
     throw new Error(
-      `Approved without the ${missing.join(" and ")} label. The planner ` +
-        `applies ${READY_LABEL} and the plan reviewer applies ${REVIEWED_LABEL}.`
+      "Approved without the approved label; obtain a plan review first"
     );
   }
 };
@@ -383,20 +377,6 @@ export function settingsFor(role, environment) {
   };
 }
 
-function main() {
-  const environment = process.env;
-  const decision = decide(environment);
-  const settings = settingsFor(decision.role, environment);
-
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- GITHUB_OUTPUT is the runner's own path, and nothing else can set it.
-  appendFileSync(
-    environment.GITHUB_OUTPUT,
-    Object.entries({ ...decision, ...settings })
-      .map(([key, value]) => `${key}=${value}\n`)
-      .join("")
-  );
-}
-
 /**
 Keep the subscription pilot on the verified model and supported review efforts.
 */
@@ -409,8 +389,4 @@ function reviewSettings(overrides) {
     );
   }
   return { effort, model };
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
 }

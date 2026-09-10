@@ -18,10 +18,10 @@ Workflow v2 is being delivered in three increments:
 1. **Proposal records and approval:** implemented in this change; requires the
    coordinated migration and live checks in
    [setup](setup.md#workflow-v2-migration).
-2. **Automatic correction:** approved, not implemented. Plan findings return to
-   Fable; CI and PR findings return to Opus. Both loops cap correction attempts
-   at three and pause for unknown requirements or exhausted attempts. Early
-   draft PRs belong to this delivery.
+2. **Automatic correction:** plan handoff is implemented in this increment,
+   pending live validation. Authenticated findings return to Fable with a
+   persisted three-attempt limit. CI/PR repair handoffs and early draft PRs are
+   the next increment; they are not enabled yet.
 3. **Child delivery and stacks:** approved, not implemented. Parent issues hold
    shared goals; children have their own reviewed deliverable and authorization.
    Independent PRs target main; dependent PRs use same-repository stacks.
@@ -92,13 +92,15 @@ Fable applies `in review`; only that narrow builder-App label event starts plan
 review. The owner applies `ready for dev` for implementation. Ordinary comments
 on authorized issues do nothing. `@claude replan` revokes authorization and
 returns to discovery. `@claude` on an implementation PR requests a scoped
-repair. Automatic plan and PR corrections remain delivery 2.
+repair. Plan findings now return to Fable automatically through a verified
+default-branch handoff. PR correction remains manual until the next delivery-2
+increment.
 
 The planner reads the repo-adapted grilling instructions in `agents/planner.md`
 and the vendored upstream skill. It asks only material owner decisions; code
 facts are its responsibility. The planner cannot push or open a PR. UX,
-architecture and documentation checks will be expanded in delivery 2 without
-creating mandatory extra agents for routine work.
+architecture and documentation checks are explicit planner responsibilities;
+specialist investigation is conditional, not a mandatory extra agent.
 
 ## Review execution and writes
 
@@ -152,3 +154,21 @@ Full v2 completion includes automatic correction, human escalation, scope
 revocation, duplicate/stale events, child delivery, stack repair and conflict
 handling. Merges remain human-controlled. Long-term subscription renewal still
 requires observation; successful write-back is not proof of indefinite renewal.
+
+## Plan handoff implementation
+
+`agents/automation.mjs` authenticates the source review and manages persisted
+correction budgets. `.github/workflows/ai-dispatch.yml` emits the narrow
+ai-correction repository event. `agents/route-run.mjs` handles CLI I/O and
+trusted handoff resolution; `agents/route.mjs` retains ordinary event/model
+policy. Only current plan findings can start an automatic planner run. The same
+issue queue serializes manual and automatic planning. Claims are written before
+the model starts; a failed run consumes its attempt rather than retrying
+forever.
+
+Delivery-1 sandbox evidence: issue #12 retained its original body byte-for-byte,
+created checkpoint 5621729482 and one planning summary, and passed Astra review
+in run 34500160824. Run 34500349398 recorded authorization and implemented PR
+#14. After a separate main documentation update, repair run 34500811470 reused
+the same authorization; CI and Astra passed repaired head
+ad5855a2f9b5ddb57a5cf0f3da2045f26bc22d23. No issue reapproval was needed.

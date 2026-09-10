@@ -1,0 +1,48 @@
+name: AI correction handoff
+on:
+  workflow_call:
+    inputs:
+      issue:
+        type: string
+        required: true
+      source:
+        type: string
+        required: true
+    secrets:
+      AI_APP_ID:
+        required: true
+      AI_APP_PRIVATE_KEY:
+        required: true
+permissions: {}
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+      - uses: actions/create-github-app-token@v3.2.0
+        id: token
+        with:
+          client-id: ${{ secrets.AI_APP_ID }}
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: read
+          permission-metadata: read
+      - name: Dispatch only current actionable findings
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          APP_LOGIN: ${{ steps.token.outputs.app-slug }}[bot]
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
+          ISSUE: ${{ inputs.issue }}
+          SOURCE_RUN: ${{ inputs.source }}
+        run: node agents/automation.mjs dispatch
