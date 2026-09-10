@@ -99,3 +99,9 @@ test("routing reads the sender's real permission before deciding", () => {
     /EVENT_SENDER_PERMISSION: \$\{\{ steps.sender.outputs.permission \}\}/
   );
 });
+
+for (const role of ["plan", "implement"]) {
+  test(`the ${role} job grants the GitHub tools agent mode installs on demand`, () => {
+    assert.match(job(role), /--allowedTools\n\s+'mcp__github__\*'/);
+  });
+}
