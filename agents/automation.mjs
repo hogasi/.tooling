@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { githubRequest } from "./github.mjs";
+import { githubRequest, readActionsPages } from "./github.mjs";
 import { latestComment, readComments, readProposal } from "./proposal.mjs";
 import { setStatus } from "./state.mjs";
 
@@ -187,23 +187,18 @@ function readCorrection(context, callGitHub) {
 }
 
 function requireReviewJob(context, run, callGitHub) {
-  const pages = callGitHub({
-    paginate: true,
-    path: `repos/${context.repository}/actions/runs/${context.sourceRunId}/attempts/${run.run_attempt}/jobs`
-  });
-  if (
-    !Array.isArray(pages) ||
-    pages.some((page) => !Array.isArray(page.jobs))
-  ) {
-    throw new Error("Malformed source jobs");
-  }
-  const isReviewed = pages
-    .flatMap((page) => page.jobs)
-    .some(
-      (job) =>
-        job.name.endsWith("/ Plan review / subscription") &&
-        job.conclusion === "success"
-    );
+  const jobs = readActionsPages(
+    {
+      collection: "jobs",
+      path: `repos/${context.repository}/actions/runs/${context.sourceRunId}/attempts/${run.run_attempt}/jobs`
+    },
+    callGitHub
+  );
+  const isReviewed = jobs.some(
+    (job) =>
+      job.name.endsWith("/ Plan review / subscription") &&
+      job.conclusion === "success"
+  );
   if (!isReviewed) {
     throw new Error("Source plan review has not succeeded");
   }

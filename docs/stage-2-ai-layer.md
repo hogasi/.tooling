@@ -15,13 +15,13 @@ repair, new-head review and duplicate suppression on September 10, 2026.
 
 Workflow v2 is being delivered in three increments:
 
-1. **Proposal records and approval:** implemented in this change; requires the
-   coordinated migration and live checks in
-   [setup](setup.md#workflow-v2-migration).
-2. **Automatic correction:** plan handoff is implemented in this increment,
-   pending live validation. Authenticated findings return to Fable with a
-   persisted three-attempt limit. CI/PR repair handoffs and early draft PRs are
-   the next increment; they are not enabled yet.
+1. **Proposal records and approval:** implemented and live-tested, including
+   unchanged original requests and repair after an unrelated main update.
+   Consumer migration is documented in [setup](setup.md#workflow-v2-migration).
+2. **Automatic correction:** authenticated plan findings return to Fable with a
+   persisted three-attempt limit and trusted structured-output publication.
+   CI/PR repair handoffs and early draft instructions are implemented in this
+   increment; consumer rollout and live repair validation remain pending.
 3. **Child delivery and stacks:** approved, not implemented. Parent issues hold
    shared goals; children have their own reviewed deliverable and authorization.
    Independent PRs target main; dependent PRs use same-repository stacks.
@@ -31,11 +31,12 @@ must authenticate the source, re-read current state and claim each attempt.
 
 ## Proposal and state contract
 
-The owner issue body remains the original request. Fable maintains one planning
-summary comment and creates a complete checkpoint only for a meaningful review
-submission. Each checkpoint includes the problem, intended user, outcome,
-decisions with evidence, scope, acceptance criteria, implementation steps,
-verification and revision rationale. Prior checkpoints remain readable.
+The owner issue body remains the original request. Fable returns structured
+planning output; trusted publication maintains one planning summary and creates
+a complete checkpoint only for a meaningful review submission. Each checkpoint
+includes the problem, intended user, outcome, decisions with evidence, scope,
+acceptance criteria, implementation steps, verification and revision rationale.
+Prior checkpoints remain readable.
 
 The checkpoint begins with `<!-- hogasi-ai proposal -->` followed by a newline.
 The summary begins with `<!-- hogasi-ai planning {"proposal":123456} -->`, where
@@ -88,13 +89,14 @@ original request does not silently change implementation scope; use
 ## Current role handoffs
 
 An authorized human opens an issue or comments during discovery to start Fable.
-Fable applies `in review`; only that narrow builder-App label event starts plan
-review. The owner applies `ready for dev` for implementation. Ordinary comments
-on authorized issues do nothing. `@claude replan` revokes authorization and
-returns to discovery. `@claude` on an implementation PR requests a scoped
-repair. Plan findings now return to Fable automatically through a verified
-default-branch handoff. PR correction remains manual until the next delivery-2
-increment.
+Trusted planner publication applies `in review`; only that narrow builder-App
+label event starts plan review. The owner applies `ready for dev` for
+implementation. Ordinary comments on authorized issues do nothing.
+`@claude replan` revokes authorization and returns to discovery. `@claude` on an
+implementation PR requests a scoped repair. Plan findings now return to Fable
+automatically through a verified default-branch handoff. Current enrolled CI
+failures and authenticated reviewer findings use the same scoped implementer
+after approval verification, a queued head recheck and a persisted repair claim.
 
 The planner reads the repo-adapted grilling instructions in `agents/planner.md`
 and the vendored upstream skill. It asks only material owner decisions; code
@@ -179,4 +181,36 @@ repository-dispatch run 34503467054 invoked Fable without an owner relay. Fable
 published checkpoint 5622180528, but its MCP server could not update the summary
 pointer; review 34503758905 correctly rejected the stale pointer before calling
 the model. The publication fix moves all planner writes into trusted workflow
-code using structured model output. Its live retest remains pending.
+code using structured model output. Its live retest is recorded below.
+
+## PR repair implementation
+
+`agents/repair.mjs` resolves trusted CI and reviewer evidence against the
+current eligible PR and approved proposal. `agents/repair-evidence.mjs`
+validates the latest enrolled CI run and structured reviewer result.
+`agents/repair-run.mjs` dispatches or claims this work; it does not run PR code.
+The router derives the original owner's identity from the authenticated approval
+record, and existing approval jobs recheck that owner's permission before and
+after queueing.
+
+CI and review share one claim for the base/head/proposal digest. Three automatic
+attempts persist across commits. Verified current CI and reviewer passes finish
+the cycle without a model call; owner repair requests explicitly resume it.
+Drafts and stale sources start nothing. Planner and builder queues use GitHub's
+[`queue: max`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency)
+so later events do not replace pending work; the platform ceiling is 100 pending
+jobs per group. Required CI and human merge remain independent gates.
+
+### Live automatic plan correction
+
+Sandbox [issue #19](https://github.com/hogasi/ai-sandbox/issues/19) passed the
+complete loop. Review 34505217173 rejected a deliberately incomplete checkpoint;
+automatic Fable run 34505386642 published revision 2 through trusted code.
+Review 34505667131 found an incorrect expectation for ESM missing-export
+failure; automatic run 34505819721 corrected it. Review 34506079861 passed
+revision 3, checkpoint 5622465549, digest
+`d893c1b508e7e0595343d00648fc4731f5f1b08c93265e8fb097d8817ae38789`. No owner
+message relayed either finding. API assertions confirmed the original body
+unchanged, three unedited checkpoints, one planning summary, one reviewer
+summary, one persisted counter at 2/3 and final `approved` status. Development
+remained unauthorized throughout this test.

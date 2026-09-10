@@ -9,6 +9,7 @@
     "agents/*.test.mjs",
     "agents/review-run.mjs",
     "agents/planning-run.mjs",
+    "agents/repair-run.mjs",
     "agents/route-run.mjs",
     "packages/*/*.test.mjs",
     "renovate/*.test.mjs"
@@ -31,6 +32,26 @@
 
   "health": {
     "thresholdOverrides": [
+      {
+        "files": [
+          "agents/repair.mjs",
+          "agents/repair-evidence.mjs",
+          "agents/route-run.mjs"
+        ],
+        "functions": [
+          "reviewVerdict",
+          "requireContext",
+          "correctionOperation",
+          "readSourcePull",
+          "isCompletedCi",
+          "requireReviewSource",
+          "approvedEvidence",
+          "repairEvidence",
+          "routeEvent"
+        ],
+        "maxCrap": 73,
+        "reason": "Estimated CRAP does not measure node:test coverage. Repair tests exercise authenticated source jobs, stale and foreign inputs, drafts, revoked scope, duplicate claims, CI supersession and verified cycle completion. CLI routing tests cover disabled and forged events. Other complexity limits remain unchanged."
+      },
       {
         "files": ["agents/planning.mjs"],
         "functions": [

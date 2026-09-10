@@ -38,6 +38,10 @@ jobs:
       pull-requests: read
     outputs:
       automatic: ${{ steps.decide.outputs.automatic }}
+      head: ${{ steps.decide.outputs.head }}
+      owner: ${{ steps.decide.outputs.owner }}
+      pull: ${{ steps.decide.outputs.pull }}
+      source_kind: ${{ steps.decide.outputs.sourceKind }}
       source: ${{ steps.decide.outputs.source }}
       approval: ${{ steps.decide.outputs.approval }}
       effort: ${{ steps.decide.outputs.effort }}
@@ -64,6 +68,7 @@ jobs:
           # repository permission; the collaborator endpoint needs it, and no
           # token available to this job can read it without the App.
           permission-administration: read
+          permission-pull-requests: read
           permission-actions: read
           permission-issues: read
           permission-metadata: read
@@ -104,6 +109,9 @@ jobs:
           AI_PR_REVIEWER_MODEL: ${{ vars.AI_PR_REVIEWER_MODEL }}
           AI_PR_REVIEWER_EFFORT: ${{ vars.AI_PR_REVIEWER_EFFORT }}
           AI_ROLES: ${{ vars.AI_ROLES }}
+          AI_CI_WORKFLOW: ${{ vars.AI_CI_WORKFLOW }}
+          CI_RUN: ${{ github.event.workflow_run.id }}
+          HANDOFF_PULL: ${{ github.event.client_payload.pull }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REVIEWER_LOGIN:
             ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
@@ -221,7 +229,7 @@ jobs:
       - name: Bind, recheck or clear the approval
         id: check
         env:
-          ACTOR: ${{ github.actor }}
+          ACTOR: ${{ needs.route.outputs.owner || github.actor }}
           # Only a comment the App itself posted counts as a record. Anyone with
           # write access can type the marker and a digest they computed
           # themselves, and a text-only match would accept it as an approval.
@@ -247,6 +255,7 @@ jobs:
     concurrency:
       group: ai-plan-${{ github.repository }}-${{ needs.route.outputs.issue }}
       cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
       issues: read
@@ -467,6 +476,20 @@ jobs:
       AI_REVIEW_APP_ID: ${{ secrets.AI_REVIEW_APP_ID }}
       AI_REVIEW_APP_PRIVATE_KEY: ${{ secrets.AI_REVIEW_APP_PRIVATE_KEY }}
 
+  pr-correction:
+    needs: [route, pr-review]
+    if: needs.pr-review.result == 'success'
+    uses: ./.github/workflows/ai-dispatch.yml
+    permissions:
+      contents: read
+    with:
+      phase: implementer
+      pull-request: ${{ format('{0}', github.event.pull_request.number) }}
+      source: ${{ github.run_id }}
+    secrets:
+      AI_APP_ID: ${{ secrets.AI_APP_ID }}
+      AI_APP_PRIVATE_KEY: ${{ secrets.AI_APP_PRIVATE_KEY }}
+
   implement:
     name: Implement
     needs: [route, approval]
@@ -484,6 +507,7 @@ jobs:
     concurrency:
       group: ai-write-${{ github.repository }}-${{ needs.route.outputs.issue }}
       cancel-in-progress: false
+      queue: max
     permissions:
       actions: read
       contents: read
@@ -543,6 +567,7 @@ jobs:
           permission-actions: read
           permission-contents: read
           permission-issues: read
+          permission-pull-requests: read
           permission-metadata: read
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
 
@@ -550,7 +575,7 @@ jobs:
       # execution. Add a per-push gate if mid-run revocation must stop writes.
       - name: Recheck the queued proposal before granting write access
         env:
-          ACTOR: ${{ github.actor }}
+          ACTOR: ${{ needs.route.outputs.owner || github.actor }}
           APP_LOGIN: ${{ steps.approval-token.outputs.app-slug }}[bot]
           EXPECTED_DIGEST: ${{ needs.approval.outputs.digest }}
           GH_TOKEN: ${{ steps.approval-token.outputs.token }}
@@ -573,21 +598,48 @@ jobs:
           permission-pull-requests: write
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
 
+      - name: Claim current repair evidence after waiting for the writer
+        id: correction
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
+          AI_CI_WORKFLOW: ${{ vars.AI_CI_WORKFLOW }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PULL_REQUEST: ${{ needs.route.outputs.pull }}
+          SOURCE_RUN: ${{ needs.route.outputs.source }}
+          SOURCE_KIND: ${{ needs.route.outputs.source_kind }}
+          EXPECTED_HEAD: ${{ needs.route.outputs.head }}
+          ISSUE: ${{ needs.route.outputs.issue }}
+          AUTOMATIC: ${{ needs.route.outputs.automatic }}
+        run: |
+          if [ "$AUTOMATIC" = true ]; then
+            node "${RUNNER_TEMP}/tooling/agents/repair-run.mjs" claim
+          else
+            node "${RUNNER_TEMP}/tooling/agents/repair-run.mjs" reset
+            echo 'claimed=true' >> "$GITHUB_OUTPUT"
+          fi
+
       # A run takes minutes and posts nothing until it ends. The reaction is the
       # only sign the owner gets that the thing they wrote was picked up, so it
       # goes on before the model starts and is replaced by the outcome after.
       - name: React to show the run started
+        if: steps.correction.outputs.claimed == 'true'
         id: reaction
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TARGET:
             ${{ github.event.comment.id && format('issues/comments/{0}',
             github.event.comment.id) || format('issues/{0}',
-            github.event.issue.number) }}
+            needs.route.outputs.issue) }}
         run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" start
 
       - uses: anthropics/claude-code-action@v1.0.219
+        if: steps.correction.outputs.claimed == 'true'
         with:
+          allowed_bots:
+            ${{ needs.route.outputs.automatic == 'true' && github.actor || '' }}
           # Without a fixed name every rerun opens a second branch and a second
           # pull request. `claude/issue-<n>` is also what the router reads the
           # work key back off when a repair arrives on the pull request.

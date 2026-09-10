@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { readApprovedProposal } from "./approval.mjs";
-import { githubRequest, readPages } from "./github.mjs";
+import { githubRequest, readActionsPages, readPages } from "./github.mjs";
 import { pullRequestIssue } from "./pull-request.mjs";
 import { validateVerdict } from "./review.mjs";
 
@@ -96,18 +96,13 @@ function readReviews(context, callGitHub) {
   return readPages(`${pullPath(context)}/reviews`, callGitHub);
 }
 function readWorkflowRuns(context, callGitHub, head) {
-  const pages = callGitHub({
-    paginate: true,
-    path: `repos/${context.repository}/actions/runs?head_sha=${head}&per_page=100`
-  });
-  if (
-    !Array.isArray(pages) ||
-    pages.some((page) => !Array.isArray(page?.workflow_runs))
-  ) {
-    throw new Error("Malformed workflow runs");
-  }
-  return pages
-    .flatMap((page) => page.workflow_runs)
+  return readActionsPages(
+    {
+      collection: "workflow_runs",
+      path: `repos/${context.repository}/actions/runs?head_sha=${head}&per_page=100`
+    },
+    callGitHub
+  )
     .filter((run) => run.head_sha === head)
     .map((run) => ({
       conclusion: run.conclusion,
@@ -127,7 +122,12 @@ function reviewBody(context, verdict) {
     .map((finding, index) => `${index + 1}. ${finding}`)
     .join("\n\n");
   const { snapshot } = context;
-  const body = `${marker(snapshot)}\n${verdict.summary}\n\n${findings}\n\nReviewed head \`${snapshot.head}\` against base \`${snapshot.base}\` and proposal #${context.issueNumber} (\`${snapshot.digest}\`).\n\nCI at capture: ${ci.length > 0 ? ci : "No Actions runs reported for this head."}\n\nFeedback only; CI and owner merge approval remain separate.\n[Review run](https://github.com/${context.repository}/actions/runs/${context.runId}) · ${snapshot.model}, ${snapshot.effort}`;
+  const result = JSON.stringify({
+    ...snapshot,
+    run: context.runId,
+    status: verdict.verdict
+  });
+  const body = `${marker(snapshot)}\n<!-- hogasi-review result ${result} -->\n${verdict.summary}\n\n${findings}\n\nReviewed head \`${snapshot.head}\` against base \`${snapshot.base}\` and proposal #${context.issueNumber} (\`${snapshot.digest}\`).\n\nCI at capture: ${ci.length > 0 ? ci : "No Actions runs reported for this head."}\n\nFeedback only; CI and owner merge approval remain separate.\n[Review run](https://github.com/${context.repository}/actions/runs/${context.runId}) · ${snapshot.model}, ${snapshot.effort}`;
   if (body.length > MAX_REVIEW_BODY) {
     throw new Error("PR review exceeds GitHub's body limit");
   }

@@ -117,6 +117,9 @@ evidence is recorded below; other repositories need their own enrollment.
          types: [opened, ready_for_review, synchronize]
        repository_dispatch:
          types: [ai-correction]
+       workflow_run:
+         workflows: [CI]
+         types: [completed]
 
      jobs:
        ai:
@@ -380,3 +383,22 @@ development authorization and malformed output before writes.
 
 This is required because the GitHub MCP server bundled with the pinned Claude
 action can create issue comments but cannot edit an existing summary comment.
+
+### Automatic PR repairs
+
+The caller receives completed `CI` runs on its default branch. If the consumer
+uses another CI workflow name, change `workflow_run.workflows`; set
+`AI_CI_WORKFLOW` to its exact path (default `.github/workflows/ci.yml`). The
+router re-reads the enrolled run and current same-repository App PR, and skips
+stale, draft, closed, foreign or unrelated work. Reviewer handoffs require the
+exact builder App and a successful trusted PR-review job with current structured
+review evidence. No PR code runs in routing or dispatch.
+
+The original authorizing owner's current permission and unchanged proposal are
+verified before and after queueing. CI and review events for one base/head/scope
+share a persisted claim under the issue writer lock. The budget is three repairs
+per cycle; a current CI pass plus reviewer pass resets it without calling Opus.
+An authorized `@claude` repair explicitly resets the budget after exhaustion.
+Quota, canceled CI and infrastructure failures do not create automatic retries.
+The implementer opens an early draft, keeps it draft while working, and marks
+ready after its checks pass. Merges remain human-controlled.
