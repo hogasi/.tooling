@@ -167,10 +167,13 @@ cannot provide that lock.
    deployment branches to the default branch. The workflow itself also rejects
    public repositories and non-default branches. Limit workflow editing to
    trusted maintainers.
-2. Grant the GitHub App repository **Environments: write** and accept the
-   updated installation permissions. Existing jobs request explicit permissions;
-   only the credential-persistence step requests this new grant, after Codex
-   exits.
+2. Create a separate `hogasi-review` GitHub App with the webhook disabled and
+   install it only on the private consumer. Grant Actions, Contents and Metadata
+   read; Issues, Pull requests and Environments write. Keep the existing
+   `hogasi-ai` App's permissions unchanged. Save the review App's **client ID**
+   as `AI_REVIEW_APP_ID` and its generated PEM private key as
+   `AI_REVIEW_APP_PRIVATE_KEY`, both environment secrets in `codex-review`. Only
+   the persistence step requests environment-write access, after Codex exits.
 3. Use a current Codex CLI on a trusted local machine to create a dedicated
    login in a separate credential directory. Configure file-backed credential
    storage, authenticate using your subscription, and seed `CODEX_AUTH_JSON` as
@@ -188,14 +191,12 @@ cannot provide that lock.
        uses: hogasi/.tooling/.github/workflows/codex-review.yml@FULL_COMMIT_SHA
        permissions:
          contents: read
-       secrets:
-         AI_APP_ID: ${{ secrets.AI_APP_ID }}
-         AI_APP_PRIVATE_KEY: ${{ secrets.AI_APP_PRIVATE_KEY }}
    ```
 
-   `CODEX_AUTH_JSON` belongs to the called job's environment; do not forward it
-   as a repository secret. Environment secrets are read when the job starts, so
-   a waiting job sees the preceding job's credential update.
+   All three secrets belong to the called job's `codex-review` environment; the
+   caller forwards no secrets. Keep the existing `AI_APP_*` credentials reserved
+   for discovery and implementation. Environment secrets are read when the job
+   starts, so a waiting job sees the preceding job's credential update.
 
 5. Run it twice, then queue three runs. Confirm all execute, the model check
    passes, persistence succeeds, and the environment secret's update timestamp

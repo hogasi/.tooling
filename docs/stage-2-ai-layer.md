@@ -9,6 +9,11 @@ reviewer and add PR review through the same serialized login flow. The
 hosted-review and Opus plan-review instructions below describe the existing
 implementation until those remaining changes land.
 
+The reviewer uses a separate `hogasi-review` App with read-only code access. Its
+credentials and the Codex login live in the consumer's `codex-review`
+environment. The existing `hogasi-ai` App retains discovery and implementation;
+it does not receive environment-write permission for credential persistence.
+
 **Built, unproven.** The files exist and pass this repository's own checks; no
 part of the loop has yet run against GitHub. Phase A below is what turns this
 from written to working, and nothing here should be enrolled on a repository

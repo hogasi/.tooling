@@ -2,11 +2,6 @@ name: Codex subscription check
 
 on:
   workflow_call:
-    secrets:
-      AI_APP_ID:
-        required: true
-      AI_APP_PRIVATE_KEY:
-        required: true
 
 permissions: {}
 
@@ -67,8 +62,8 @@ jobs:
         id: persistence-token
         if: always() && steps.auth.outcome == 'success'
         with:
-          client-id: ${{ secrets.AI_APP_ID }}
-          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+          client-id: ${{ secrets.AI_REVIEW_APP_ID }}
+          private-key: ${{ secrets.AI_REVIEW_APP_PRIVATE_KEY }}
           permission-environments: write
           permission-metadata: read
 
