@@ -8,7 +8,7 @@ const workflow = readFileSync(
   "utf8"
 );
 const job = (name) =>
-  workflow.split(`\n  ${name}:\n`)[1].split(/\n {2}[a-z]+:\n/, 1)[0];
+  workflow.split(`\n  ${name}:\n`)[1].split(/\n {2}[a-z-]+:\n/, 1)[0];
 const condition = (name) =>
   job(name)
     .match(/\n {4}if:\n([\s\S]*?)\n {4}runs-on:/)[1]
@@ -117,13 +117,18 @@ for (const role of ["plan", "plan-review", "implement"]) {
 for (const role of ["plan", "plan-review", "implement"]) {
   test(`the ${role} job marks the thread before the model starts and after it ends`, () => {
     const steps = job(role);
-    const started = steps.indexOf("content=eyes");
+    const started = steps.indexOf('reaction.sh" start');
     const action = steps.indexOf("uses: anthropics/claude-code-action@");
     const outcome = steps.indexOf("Replace the reaction with the outcome");
 
     assert.ok(started > 0 && started < action);
     assert.ok(outcome > action);
-    assert.match(steps.slice(outcome), /if: always\(\)/);
+    assert.match(
+      steps.slice(outcome),
+      /if: always\(\) && steps.reaction.outputs.target != ''/
+    );
+    assert.match(steps.slice(outcome), /reaction.sh" finish/);
+    assert.match(steps.slice(outcome), /OUTCOME: \$\{\{ job.status \}\}/);
   });
 }
 

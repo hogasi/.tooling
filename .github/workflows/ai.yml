@@ -304,11 +304,7 @@ jobs:
             ${{ github.event.comment.id && format('issues/comments/{0}',
             github.event.comment.id) || format('issues/{0}',
             github.event.issue.number) }}
-        run: |
-          set -euo pipefail
-          id=$(gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions" --method POST -f content=eyes --jq '.id')
-          echo "id=${id}" >> "$GITHUB_OUTPUT"
-          echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
+        run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" start
 
       - uses: anthropics/claude-code-action@v1.0.219
         with:
@@ -321,21 +317,13 @@ jobs:
           prompt: ${{ steps.prompt.outputs.text }}
 
       - name: Replace the reaction with the outcome
-        if: always() && steps.reaction.outputs.id != ''
+        if: always() && steps.reaction.outputs.target != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           OUTCOME: ${{ job.status }}
           REACTION: ${{ steps.reaction.outputs.id }}
           TARGET: ${{ steps.reaction.outputs.target }}
-        run: |
-          set -euo pipefail
-          if [ "$OUTCOME" = "success" ]; then
-            content=rocket
-          else
-            content=confused
-          fi
-          gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions/${REACTION}" --method DELETE
-          gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions" --method POST -f "content=${content}"
+        run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" finish
 
   plan-review:
     name: Plan review
@@ -440,11 +428,7 @@ jobs:
             ${{ github.event.comment.id && format('issues/comments/{0}',
             github.event.comment.id) || format('issues/{0}',
             github.event.issue.number) }}
-        run: |
-          set -euo pipefail
-          id=$(gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions" --method POST -f content=eyes --jq '.id')
-          echo "id=${id}" >> "$GITHUB_OUTPUT"
-          echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
+        run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" start
 
       - uses: anthropics/claude-code-action@v1.0.219
         with:
@@ -457,21 +441,13 @@ jobs:
           prompt: ${{ steps.prompt.outputs.text }}
 
       - name: Replace the reaction with the outcome
-        if: always() && steps.reaction.outputs.id != ''
+        if: always() && steps.reaction.outputs.target != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           OUTCOME: ${{ job.status }}
           REACTION: ${{ steps.reaction.outputs.id }}
           TARGET: ${{ steps.reaction.outputs.target }}
-        run: |
-          set -euo pipefail
-          if [ "$OUTCOME" = "success" ]; then
-            content=rocket
-          else
-            content=confused
-          fi
-          gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions/${REACTION}" --method DELETE
-          gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions" --method POST -f "content=${content}"
+        run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" finish
 
   implement:
     name: Implement
@@ -586,11 +562,7 @@ jobs:
             ${{ github.event.comment.id && format('issues/comments/{0}',
             github.event.comment.id) || format('issues/{0}',
             github.event.issue.number) }}
-        run: |
-          set -euo pipefail
-          id=$(gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions" --method POST -f content=eyes --jq '.id')
-          echo "id=${id}" >> "$GITHUB_OUTPUT"
-          echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
+        run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" start
 
       - uses: anthropics/claude-code-action@v1.0.219
         with:
@@ -610,18 +582,10 @@ jobs:
           prompt: ${{ steps.prompt.outputs.text }}
 
       - name: Replace the reaction with the outcome
-        if: always() && steps.reaction.outputs.id != ''
+        if: always() && steps.reaction.outputs.target != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           OUTCOME: ${{ job.status }}
           REACTION: ${{ steps.reaction.outputs.id }}
           TARGET: ${{ steps.reaction.outputs.target }}
-        run: |
-          set -euo pipefail
-          if [ "$OUTCOME" = "success" ]; then
-            content=rocket
-          else
-            content=confused
-          fi
-          gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions/${REACTION}" --method DELETE
-          gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions" --method POST -f "content=${content}"
+        run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" finish
