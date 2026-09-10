@@ -1,7 +1,9 @@
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+
+import { githubRequest } from "./github.mjs";
+import { requirePlanReview } from "./review.mjs";
 
 const marker = "<!-- hogasi-ai approval";
 const APPROVAL_LABELS = ["ready", "reviewed", "ready for dev"];
@@ -16,6 +18,7 @@ export function applyApproval(context, callGitHub = githubRequest) {
     return clearApproval(context, callGitHub, issue);
   }
   requireLabels(issue);
+  requirePlanReview({ ...context, issue }, callGitHub);
   return context.mode === "record"
     ? recordApproval(context, callGitHub, issue)
     : verifyApproval(context, callGitHub, issue);
@@ -37,21 +40,6 @@ function clearApproval(context, callGitHub, issue) {
     path: `${path}/comments`
   });
   return "";
-}
-
-function githubRequest({ body, method = "GET", paginate, path }) {
-  const args = ["api", path, "--method", method];
-  if (paginate) {
-    args.push("--paginate", "--slurp");
-  }
-  if (body) {
-    args.push("--input", "-");
-  }
-  const output = execFileSync("gh", args, {
-    encoding: "utf8",
-    input: JSON.stringify(body)
-  });
-  return output.trim() ? JSON.parse(output) : undefined;
 }
 
 function latestApproval(context, callGitHub) {
@@ -98,6 +86,7 @@ function main() {
     issueNumber: environment.ISSUE,
     mode: environment.MODE,
     repository: environment.GITHUB_REPOSITORY,
+    reviewerLogin: environment.REVIEWER_LOGIN,
     runId: environment.GITHUB_RUN_ID
   });
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- The Actions runner supplies this output file path.

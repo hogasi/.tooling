@@ -7,6 +7,7 @@
   // imports them and they look unreachable. Here they are the entry points.
   "entry": [
     "agents/*.test.mjs",
+    "agents/review-run.mjs",
     "packages/*/*.test.mjs",
     "renovate/*.test.mjs"
   ],
@@ -28,6 +29,20 @@
 
   "health": {
     "thresholdOverrides": [
+      {
+        "files": ["agents/review.mjs"],
+        "functions": [
+          "parseRecord",
+          "readReadyIssue",
+          "validateVerdict",
+          "currentSha",
+          "requirePlanReview",
+          "requireConsistentVerdict",
+          "requirePendingReview"
+        ],
+        "maxCrap": 75,
+        "reason": "Estimated CRAP treats internal review validation as untested. review.test.mjs exercises malformed verdicts and records, forged identities, pending and superseded reviews, stale proposal and repository revisions, and publication through public entry points. Keep cyclomatic and cognitive limits unchanged."
+      },
       {
         "files": ["agents/codex-auth.mjs"],
         "functions": ["requireSubscription"],

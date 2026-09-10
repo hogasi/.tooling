@@ -1,7 +1,7 @@
 name: AI
 
 # Reusable workflow. An enrolled repository calls it from a thin caller that
-# forwards the three secrets and declares the read permissions below; the
+# maps the Claude and reviewer secrets and declares read permissions; the
 # caller in docs/setup.md is the copy to start from.
 #
 # Roles are off until `AI_ROLES` names them, so adding the caller to a
@@ -19,6 +19,12 @@ on:
       CLAUDE_CODE_OAUTH_TOKEN:
         description: Claude subscription token from `claude setup-token`
         required: true
+      CODEX_AUTH_JSON:
+        required: false
+      AI_REVIEW_APP_ID:
+        required: false
+      AI_REVIEW_APP_PRIVATE_KEY:
+        required: false
 
 permissions: {}
 
@@ -84,7 +90,6 @@ jobs:
           AI_DEFAULT_EFFORT: high
           AI_DEFAULT_IMPLEMENTER_MODEL: opus
           AI_DEFAULT_PLANNER_MODEL: fable
-          AI_DEFAULT_PLAN_REVIEWER_MODEL: opus
           AI_IMPLEMENTER_EFFORT: ${{ vars.AI_IMPLEMENTER_EFFORT }}
           AI_IMPLEMENTER_MODEL: ${{ vars.AI_IMPLEMENTER_MODEL }}
           AI_PLANNER_EFFORT: ${{ vars.AI_PLANNER_EFFORT }}
@@ -189,6 +194,7 @@ jobs:
           # Administration read is only for reading back the requesting actor's
           # repository permission; the collaborator endpoint needs it.
           permission-administration: read
+          permission-contents: read
           permission-issues: write
           permission-metadata: read
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
@@ -203,6 +209,8 @@ jobs:
           APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ISSUE: ${{ needs.route.outputs.issue || github.event.issue.number }}
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
           MODE: ${{ needs.route.outputs.approval }}
         run: node _tooling/agents/approval.mjs
 
@@ -327,127 +335,23 @@ jobs:
 
   plan-review:
     name: Plan review
-    needs: [route, approval]
+    needs: route
     if:
-      always() && needs.route.result == 'success' && needs.route.outputs.role ==
-      'plan-reviewer' && (needs.approval.result == 'success' ||
-      (needs.route.outputs.approval == 'none' && needs.approval.result ==
-      'skipped'))
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    # Superseded discovery is worth cancelling: the newer comment contains the
-    # answers the older run was about to ask for again.
-    concurrency:
-      group:
-        ai-plan-review-${{ github.repository }}-${{ needs.route.outputs.issue }}
-      cancel-in-progress: true
+      needs.route.result == 'success' && needs.route.outputs.role ==
+      'plan-reviewer'
+    uses: ./.github/workflows/codex-review.yml
     permissions:
       contents: read
       issues: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: _tooling
-          ref: ${{ job.workflow_sha }}
-          repository: ${{ job.workflow_repository }}
-
-      # Out of the workspace before the consumer is checked out over it, and so
-      # that nothing the planner writes can land in the repository's own tree.
-      - name: Stage the tooling files
-        run: mv "${GITHUB_WORKSPACE}/_tooling" "${RUNNER_TEMP}/tooling"
-
-      - uses: actions/checkout@v7
-
-      # Vendored from silviuhogasi/.ai at commit
-      # 6b5066167dc699d3392e1a87dcc110190538ad80
-      # (general/coding-style/AGENTS.md). Claude Code reads this as user memory,
-      # which is how one persona reaches every enrolled repository without being
-      # pasted into a prompt. A vendored copy drifts until someone re-pins it.
-      - name: Install the coding style
-        run: |
-          set -euo pipefail
-          mkdir -p "${HOME}/.claude"
-          cp "${RUNNER_TEMP}/tooling/agents/vendor/coding-style.md" "${HOME}/.claude/CLAUDE.md"
-
-      # No contents write and no pull request access: the reviewer reports on
-      # the proposal and moves two labels, and cannot implement what it just
-      # approved. That is a credential, not a rule in a prompt.
-      - uses: actions/create-github-app-token@v3.2.0
-        id: app-token
-        with:
-          client-id: ${{ secrets.AI_APP_ID }}
-          permission-contents: read
-          permission-issues: write
-          permission-metadata: read
-          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
-
-      # A pass from the previous revision must not survive into this one. The
-      # label goes before the model runs, so a review that crashes leaves the
-      # proposal unreviewed rather than silently still approved.
-      - name: Retract the previous pass
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          ISSUE: ${{ needs.route.outputs.issue }}
-        run: |
-          set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/labels/reviewed" \
-            --method DELETE --silent || true
-
-      - name: Build the reviewer prompt
-        id: prompt
-        env:
-          EFFORT: ${{ needs.route.outputs.effort }}
-          ISSUE: ${{ needs.route.outputs.issue }}
-          MODEL: ${{ needs.route.outputs.model }}
-        run: |
-          set -euo pipefail
-          delimiter="PROMPT_$(openssl rand -hex 16)"
-          {
-            printf 'text<<%s\n' "$delimiter"
-            cat "${RUNNER_TEMP}/tooling/agents/plan-reviewer.md"
-            printf '\n'
-            cat "${RUNNER_TEMP}/tooling/agents/voice.md"
-            printf '\n## This run\n\n- Repository: %s\n- Issue: #%s\n- Model: %s at %s effort\n' \
-              "$GITHUB_REPOSITORY" "$ISSUE" "$MODEL" "$EFFORT"
-            printf '%s\n' "$delimiter"
-          } >> "$GITHUB_OUTPUT"
-
-      # An explicit prompt puts the action in agent mode, which installs a
-      # GitHub MCP server only for the tools named here. Without them the
-      # reviewer reads the repository and is then denied every attempt to say
-      # what it found — a run that costs a model call and posts nothing.
-      # A run takes minutes and posts nothing until it ends. The reaction is the
-      # only sign the owner gets that the thing they wrote was picked up, so it
-      # goes on before the model starts and is replaced by the outcome after.
-      - name: React to show the run started
-        id: reaction
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          TARGET:
-            ${{ github.event.comment.id && format('issues/comments/{0}',
-            github.event.comment.id) || format('issues/{0}',
-            github.event.issue.number) }}
-        run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" start
-
-      - uses: anthropics/claude-code-action@v1.0.219
-        with:
-          claude_args:
-            --model ${{ needs.route.outputs.model }} --effort ${{
-            needs.route.outputs.effort }} --max-turns 60 --allowedTools
-            'mcp__github__*'
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ steps.app-token.outputs.token }}
-          prompt: ${{ steps.prompt.outputs.text }}
-
-      - name: Replace the reaction with the outcome
-        if: always() && steps.reaction.outputs.target != ''
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          OUTCOME: ${{ job.status }}
-          REACTION: ${{ steps.reaction.outputs.id }}
-          TARGET: ${{ steps.reaction.outputs.target }}
-        run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" finish
+    with:
+      mode: plan
+      issue: ${{ needs.route.outputs.issue }}
+      model: ${{ needs.route.outputs.model }}
+      effort: ${{ needs.route.outputs.effort }}
+    secrets:
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      AI_REVIEW_APP_ID: ${{ secrets.AI_REVIEW_APP_ID }}
+      AI_REVIEW_APP_PRIVATE_KEY: ${{ secrets.AI_REVIEW_APP_PRIVATE_KEY }}
 
   implement:
     name: Implement
@@ -522,6 +426,7 @@ jobs:
         with:
           client-id: ${{ secrets.AI_APP_ID }}
           permission-administration: read
+          permission-contents: read
           permission-issues: read
           permission-metadata: read
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
@@ -535,6 +440,8 @@ jobs:
           EXPECTED_DIGEST: ${{ needs.approval.outputs.digest }}
           GH_TOKEN: ${{ steps.approval-token.outputs.token }}
           ISSUE: ${{ needs.route.outputs.issue }}
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
           MODE: verify
         run: node "${RUNNER_TEMP}/tooling/agents/approval.mjs"
 
