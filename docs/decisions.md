@@ -33,22 +33,21 @@ Limits and rename behavior checked on 2026-09-09 against
 
 ## AI development decisions
 
-- **The issue owns discovery and planning.** Comments hold the conversation; the
-  body holds the proposal. Approval binds to a specific proposal revision.
-- **Fable plans; Opus implements and writes tests.** `grilling` supplies the
-  discovery method directly, adapted for issue conversations. The `grill-me`
-  slash-command wrapper is not needed by the automated planner. Workflow jobs
-  own model and effort defaults; prompt files own behavior.
-- **CI executes tests independently.** No separate AI tester or required
-  `ai/test` job. Required checks and owner merge remain the gates.
-- **Codex reviews, targeting GPT-6 Astra.** Hosted exact-model selection is
-  unresolved. Subscription authentication is preferred, but Fable plan access
-  and any API-backed Astra alternative must be explicitly verified and agreed.
-- **One GitHub App identity, no hosted service.** Authorized owner requests
-  start Claude; initial repairs are explicit PR comments, not bot-to-bot loops.
-- **Prove the whole loop before expanding.** A sandbox with ordinary CI is
-  sufficient; reusable CI and the template follow real product consumers.
+- Preserve the original issue body. One planning summary links immutable
+  proposal checkpoints and decision history; one reviewer summary holds
+  findings.
+- Labels show progress. Owner ready-for-dev authorization binds to a reviewed
+  checkpoint and actual label event. Unrelated main changes do not revoke scope.
+- Fable plans using grilling; Opus implements and writes tests. UX, architecture
+  and documentation checks belong in planning, with conditional specialist work.
+- Plan and PR reviews use subscription-only gpt-6-astra medium on GitHub-hosted
+  runners, with a separate reviewer App and environment. No API fallback.
+- Independent CI and owner merge remain required. No separate tester.
+- Bounded automatic correction is approved for delivery 2. Current findings
+  drive at most three attempts; unknown scope and exhaustion pause for the
+  owner.
+- Sub-issues and dependent PR stacks are approved for delivery 3. Children have
+  explicit deliverables and authorization; independent PRs target main.
 
-The canonical planned setting locations and unresolved provider constraints are
-in [stage 2](stage-2-ai-layer.md#where-files-and-settings-belong). Enrollment
-and credentials are tracked in [setup.md](setup.md).
+[Stage 2](stage-2-ai-layer.md) records implementation status and setting
+locations; [setup](setup.md) records enrollment and migration checks.

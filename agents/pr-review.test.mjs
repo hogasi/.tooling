@@ -14,7 +14,7 @@ const issue = {
   number: 9,
   state: "open"
 };
-const digest = createHash("sha256").update(issue.body).digest("hex");
+const digest = createHash("sha256").update(`10\n${issue.body}`).digest("hex");
 const pullRequest = {
   base: { ref: "main", repo: { full_name: "hogasi/sandbox" }, sha: sha("a") },
   draft: false,
@@ -55,12 +55,28 @@ function fixture(overrides = {}) {
       [
         [
           {
-            body: `<!-- hogasi-ai approval sha256=${digest} run=100 -->`,
+            body: `<!-- hogasi-ai proposal -->\n${state.issue.body}`,
+            created_at: "2026-09-10T10:00:00Z",
+            id: 10,
+            updated_at: "2026-09-10T10:00:00Z",
+            user: { login: context.appLogin }
+          },
+          {
+            body: '<!-- hogasi-ai planning {"proposal":10} -->',
+            id: 11,
+            user: { login: context.appLogin }
+          },
+          {
+            body: `<!-- hogasi-ai authorization ${JSON.stringify({ actor: "owner", digest, event: 20, proposal: 10 })} -->`,
             id: 1,
             user: { login: context.appLogin }
           }
         ]
       ]
+    ],
+    [
+      "repos/hogasi/sandbox/issues/9/events",
+      [[{ event: "labeled", id: 20, label: { name: "ready for dev" } }]]
     ],
     ["repos/hogasi/sandbox/issues/10/comments", [[]]],
     ["repos/hogasi/sandbox/pulls/10", state.pullRequest],

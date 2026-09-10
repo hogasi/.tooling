@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { readApprovedProposal } from "./approval.mjs";
-import { githubRequest } from "./github.mjs";
+import { githubRequest, readPages } from "./github.mjs";
 import { pullRequestIssue } from "./pull-request.mjs";
 import { validateVerdict } from "./review.mjs";
 
@@ -22,7 +22,7 @@ export function beginPullRequestReview(context, callGitHub = githubRequest) {
   ) {
     throw new Error("PR changed while queued; use a current PR event");
   }
-  const { digest, issue } = readApprovedProposal(context, callGitHub);
+  const { digest, proposal } = readApprovedProposal(context, callGitHub);
   const snapshot = reviewSnapshot(context, { digest, pullRequest });
   const reviews = readReviews(context, callGitHub);
   if (hasPublishedReview(context, { reviews, snapshot })) {
@@ -30,10 +30,10 @@ export function beginPullRequestReview(context, callGitHub = githubRequest) {
   }
   const ci = readWorkflowRuns(context, callGitHub, snapshot.head);
   const comments = readPages(
-    callGitHub,
-    `repos/${context.repository}/issues/${context.pullRequestNumber}/comments`
+    `repos/${context.repository}/issues/${context.pullRequestNumber}/comments`,
+    callGitHub
   );
-  return { ci, comments, proposal: issue, pullRequest, reviews, snapshot };
+  return { ci, comments, proposal, pullRequest, reviews, snapshot };
 }
 
 /**
@@ -75,13 +75,6 @@ function hasPublishedReview(context, { reviews, snapshot }) {
       review.body?.startsWith(marker(snapshot))
   );
 }
-function readPages(callGitHub, path) {
-  const pages = callGitHub({ paginate: true, path });
-  if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) {
-    throw new Error("Malformed paginated GitHub response");
-  }
-  return pages.flat();
-}
 function readPullRequest(context, callGitHub) {
   const pullRequest = callGitHub({ path: pullPath(context) });
   if (
@@ -100,7 +93,7 @@ function readPullRequest(context, callGitHub) {
   return pullRequest;
 }
 function readReviews(context, callGitHub) {
-  return readPages(callGitHub, `${pullPath(context)}/reviews`);
+  return readPages(`${pullPath(context)}/reviews`, callGitHub);
 }
 function readWorkflowRuns(context, callGitHub, head) {
   const pages = callGitHub({

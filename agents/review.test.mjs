@@ -11,9 +11,15 @@ import {
 
 const body = "Implement greeting validation.";
 const sha = "a".repeat(40);
-const digest = createHash("sha256").update(body).digest("hex");
-const issue = { body, labels: [{ name: "ready" }], number: 7, state: "open" };
+const digest = createHash("sha256").update(`10\n${body}`).digest("hex");
+const issue = {
+  body,
+  labels: [{ name: "in review" }],
+  number: 7,
+  state: "open"
+};
 const context = {
+  appLogin: "builder[bot]",
   attempt: "1",
   eventBody: body,
   issueNumber: "7",
@@ -22,10 +28,11 @@ const context = {
   runId: "123",
   sha
 };
-const snapshot = { digest, run: "123.1", sha };
+const snapshot = { digest, proposal: 10, run: "123.1", sha };
 const record = (status = "pass", overrides = {}) => ({
   body: `<!-- hogasi-review plan ${JSON.stringify({ ...snapshot, status })} -->`,
   id: 1,
+  updated_at: "2026-09-10T10:01:00Z",
   user: { login: context.reviewerLogin },
   ...overrides
 });
@@ -37,14 +44,35 @@ const pass = {
 function fixture({
   comments = [record()],
   current = issue,
-  currentSha = sha
+  currentSha = sha,
+  proposalBody = body
 } = {}) {
   const writes = [];
   const reads = new Map([
     ["repos/hogasi/sandbox", { default_branch: "main" }],
     ["repos/hogasi/sandbox/commits/main", { sha: currentSha }],
     ["repos/hogasi/sandbox/issues/7", current],
-    ["repos/hogasi/sandbox/issues/7/comments", [comments]]
+    [
+      "repos/hogasi/sandbox/issues/7/comments",
+      [
+        comments,
+        [
+          {
+            body: `<!-- hogasi-ai proposal -->\n${proposalBody}`,
+            created_at: "2026-09-10T10:00:00Z",
+            id: 10,
+            updated_at: "2026-09-10T10:00:00Z",
+            user: { login: context.appLogin }
+          },
+          {
+            body: '<!-- hogasi-ai planning {"proposal":10} -->',
+            id: 11,
+            user: { login: context.appLogin }
+          }
+        ]
+      ]
+    ],
+    ["repos/hogasi/sandbox/issues/7/labels", current.labels]
   ]);
   const request = (options) => {
     if (options.method && options.method !== "GET") {
@@ -78,17 +106,15 @@ test("a current passing reviewer record authorizes development", () => {
   const { request } = fixture();
   assert.doesNotThrow(() => requirePlanReview({ ...context, issue }, request));
 });
-test("changed proposal or repository invalidates the pass", () => {
-  for (const options of [
-    { issue: { ...issue, body: "Changed" } },
-    { currentSha: "b".repeat(40) }
-  ]) {
-    const { request } = fixture(options);
-    assert.throws(
-      () => requirePlanReview({ ...context, issue, ...options }, request),
-      /current passing/
-    );
-  }
+test("changed proposal invalidates the pass but main movement does not", () => {
+  assert.throws(
+    () =>
+      requirePlanReview(context, fixture({ proposalBody: "Changed" }).request),
+    /passing/
+  );
+  assert.doesNotThrow(() =>
+    requirePlanReview(context, fixture({ currentSha: "b".repeat(40) }).request)
+  );
 });
 test("a later pending or failed record supersedes a prior pass", () => {
   for (const status of ["pending", "changes_requested"]) {
@@ -106,12 +132,12 @@ test("review start retracts a pass and records pending before model execution", 
     current: { ...issue, labels: [...issue.labels, { name: "reviewed" }] }
   });
   assert.deepEqual(beginReview(context, request).snapshot, snapshot);
-  assert.equal(writes[0].method, "DELETE");
-  assert.match(writes[1].body.body, /pending/);
+  assert.equal(writes[0].method, "PATCH");
+  assert.match(writes[0].body.body, /pending/);
 });
 test("stale queued events do not change current labels", () => {
   const { request, writes } = fixture({
-    current: { ...issue, body: "New plan" }
+    currentSha: "b".repeat(40)
   });
   assert.throws(() => beginReview(context, request), /changed/);
   assert.equal(writes.length, 0);
@@ -120,7 +146,7 @@ test("valid pass is published before applying reviewed", () => {
   const { request, writes } = fixture({ comments: [record("pending")] });
   publishReview({ ...context, snapshot, verdict: pass }, request);
   assert.match(writes[0].body.body, /"status":"pass"/);
-  assert.deepEqual(writes[1].body, { labels: ["reviewed"] });
+  assert.deepEqual(writes.at(-1).body, { labels: ["approved"] });
 });
 test("findings remove ready without approving development", () => {
   const { request, writes } = fixture({ comments: [record("pending")] });
@@ -137,11 +163,11 @@ test("findings remove ready without approving development", () => {
     request
   );
   assert.match(writes[0].body.body, /Acceptance criterion/);
-  assert.match(writes[1].path, /labels\/ready$/);
+  assert.match(writes[1].path, /labels\/in%20review$/);
 });
 test("publication rejects changed proposal, repository, or removed ready", () => {
   for (const options of [
-    { current: { ...issue, body: "New" } },
+    { proposalBody: "New" },
     { currentSha: "b".repeat(40) },
     { current: { ...issue, labels: [] } }
   ]) {
@@ -151,7 +177,7 @@ test("publication rejects changed proposal, repository, or removed ready", () =>
     });
     assert.throws(
       () => publishReview({ ...context, snapshot, verdict: pass }, request),
-      /changed|ready/
+      /changed|review/
     );
     assert.equal(writes.length, 0);
   }

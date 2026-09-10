@@ -27,14 +27,10 @@ its parent was. The other two new rules were right and the code changed instead:
   provide review. There is no planned `ai/test` or AI review check.
 - **Org-admin bypass is initially `always`.** Tighten to `pull_request` after
   the protected PR repair path is proven. The AI App receives no bypass.
-- **Automatic repair loops** wait for repetitive work observed during stage 2.
-  First prove event routing and add an enforced cap; initial repairs are owner
-  requests in PR comments.
+- **Automatic repairs and stacked delivery** are approved staged work; see
+  [stage 2](stage-2-ai-layer.md).
 - **Auto-merge** requires a separate decision after at least a month of real
   review evidence, including a policy for waiting for review completion.
-- **Exact Astra review selection** must be verified in the linked Codex account.
-  If unavailable, hosted review versus API-backed Astra requires an explicit
-  owner decision about model and billing. See [stage 2](stage-2-ai-layer.md).
 - **A separate AI tester is removed from the design.** Opus writes tests and CI
   executes them independently. Revisit only if real acceptance gaps justify an
   additional role.

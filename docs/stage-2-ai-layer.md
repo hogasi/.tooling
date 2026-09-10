@@ -1,394 +1,154 @@
 # Stage 2 — development directly in GitHub
 
-Both plan and PR review use `gpt-6-astra` at `medium` reasoning through
-subscription-authenticated Codex CLI on GitHub-hosted runners. No API or hosted
-review fallback. The
-[subscription preflight](setup.md#astra-subscription-preflight) and issue-plan
-verdict/approval tests passed in the sandbox on September 10, 2026. The PR route
-is implemented and awaits live validation. All three modes share one serialized
-login flow.
+The goal is discovery, planning, implementation, testing, review and repair
+inside GitHub, with explicit owner authorization and owner merge. Fable plans,
+Opus builds and writes tests, subscription Codex (`gpt-6-astra`, `medium`)
+reviews, and independent CI runs tests. There is no separate tester or API
+fallback. Credentials remain in the private consumer; no always-on server.
 
-The reviewer uses a separate `hogasi-review` App with read-only code access. Its
-credentials and the Codex login live in the consumer's `codex-review`
-environment. The existing `hogasi-ai` App retains discovery and implementation;
-it does not receive environment-write permission for credential persistence.
+## Delivery status
 
-**Full loop still unproven.** Plan review rejected a defective proposal, passed
-its correction, blocked stale approval and allowed an approved implementation PR
-with passing CI. PR findings, repair and new-head review still need live
-validation. Complete the remaining sandbox checks before broader enrollment.
+The previous body-based workflow passed live sandbox plan rejection/correction,
+stale approval rejection, implementation, deliberate PR defect detection, manual
+repair, new-head review and duplicate suppression on September 10, 2026.
+[PR #10](https://github.com/hogasi/ai-sandbox/pull/10) holds the PR evidence.
 
-The goal is a complete issue-to-merge development loop inside GitHub: discovery,
-planning, implementation, tests, independent review, and owner-directed repairs.
-One Claude workflow handles planning and implementation; CI verifies the code
-and Codex reviews it. No separate AI tester.
+Workflow v2 is being delivered in three increments:
 
-## Agreed flow
+1. **Proposal records and approval:** implemented in this change; requires the
+   coordinated migration and live checks in
+   [setup](setup.md#workflow-v2-migration).
+2. **Automatic correction:** approved, not implemented. Plan findings return to
+   Fable; CI and PR findings return to Opus. Both loops cap correction attempts
+   at three and pause for unknown requirements or exhausted attempts. Early
+   draft PRs belong to this delivery.
+3. **Child delivery and stacks:** approved, not implemented. Parent issues hold
+   shared goals; children have their own reviewed deliverable and authorization.
+   Independent PRs target main; dependent PRs use same-repository stacks.
 
-1. The owner opens an issue describing the desired outcome.
-2. Fable investigates the repository and conducts discovery in issue comments
-   using `grilling` directly. It asks batches of independent questions with
-   recommended answers, carrying previous answers forward.
-3. Fable updates the issue body with the outcome, scope, acceptance criteria,
-   implementation plan, and verification plan. It applies `ready` when no
-   material decisions remain.
-4. Astra reviews the proposal and applies `reviewed` only for a current pass.
-   The owner approves that proposal revision with `ready for dev`. Opus
-   implements it, writes tests, runs the repository checks, and opens a linked
-   PR.
-5. Required CI independently runs against the latest proposed code. Codex
-   reviews the PR with Astra medium and publishes feedback pinned to its head.
-6. The owner requests a repair with `@claude` in the PR, referring to CI
-   failures or review findings. Opus updates the same branch and CI runs again.
-   Each new commit triggers another review. An identical-input rerun is skipped.
-7. The owner merges after checking the evidence and resolving review
-   discussions. `Closes #<n>` closes the issue on merge to the default branch.
+Do not enable future handoffs by simply allowing arbitrary bots. Trusted code
+must authenticate the source, re-read current state and claim each attempt.
 
-The first version uses explicit repair requests. Bot reviews, comments, and
-pushes do not start another Claude run. Automatic repair is deferred until real
-use demonstrates which handoffs are worth automating.
+## Proposal and state contract
 
-## Where files and settings belong
+The owner issue body remains the original request. Fable maintains one planning
+summary comment and creates a complete checkpoint only for a meaningful review
+submission. Each checkpoint includes the problem, intended user, outcome,
+decisions with evidence, scope, acceptance criteria, implementation steps,
+verification and revision rationale. Prior checkpoints remain readable.
 
-Everything except `ci-node.yml`, which belongs to stage 1, now exists:
+The checkpoint begins with `<!-- hogasi-ai proposal -->` followed by a newline.
+The summary begins with `<!-- hogasi-ai planning {"proposal":123456} -->`, where
+123456 is the actual checkpoint comment ID. During discovery the pointer is
+null. The summary links the current revision, explains current decisions and
+links meaningful earlier revisions. It is navigation, not approved scope.
 
-```
-.tooling/
-├── .github/
-│   ├── actionlint.yaml              suppresses two unknown-context warnings
-│   └── workflows/
-│       ├── ai.yml                   reusable workflow and role defaults
-│       ├── codex-review.yml         serialized subscription runner
-│       └── ci-node.yml              deterministic CI, from stage 1 — not built
-└── agents/
-    ├── planner.md                   issue discovery and planning instructions
-    ├── implementer.md               implementation, tests, and repair instructions
-    ├── review-guidelines.md         canonical section for consumer AGENTS.md
-    ├── route.mjs                    event routing and model settings, with tests
-    ├── approval.mjs                 approval state and authority checks, with tests
-    ├── review.mjs                   verdict validation, publication and revision checks
-    ├── review-run.mjs               Actions preparation and publication entry point
-    ├── review-snapshot.mjs          committed text snapshot and input size checks
-    ├── review.schema.json          Codex structured response shape
-    ├── pr-review.mjs                PR capture, deduplication and publication
-    ├── pull-request.mjs             shared PR eligibility and routing
-    ├── pr-reviewer.md               Astra PR-review instructions
-    ├── plan-reviewer.md             Astra plan-review instructions
-    ├── codex-auth.mjs               restore, persist and remove the subscription login
-    ├── github.mjs                   shared GitHub API transport
-    └── skills/                      pinned upstream discovery skill bundle
-        ├── grilling/SKILL.md
-        └── LICENSE
-```
+`agents/proposal.mjs` reads all comment pages, checks the publisher App
+identity, requires the summary to reference the latest checkpoint and rejects
+edited, deleted, empty or superseded checkpoints. The digest includes comment ID
+and exact proposal text, so an identical-text replacement is still a new
+revision.
 
-`agents/skills/grilling/SKILL.md` is `skills/productivity/grilling/SKILL.md`
-from `mattpocock/skills` at commit `3cca18b368ae95cdbdebbff572ccafa662551015`,
-byte for byte, with the upstream MIT licence and its provenance in
-`agents/skills/LICENSE`. That directory is in `.prettierignore` so the vendored
-copy stays diffable against upstream, and the commit is named in
-`agents/planner.md`. The workflow copies the skill to `~/.claude/skills/` before
-invoking Claude, because storing a file under `agents/skills` neither installs
-nor invokes it, and the planner instructions load it by name.
+| Status              | Meaning and owner                                                    |
+| ------------------- | -------------------------------------------------------------------- |
+| `learning`          | Discovery is gathering evidence or waiting for owner answers.        |
+| `in review`         | Planner submitted a complete revision; reviewer is checking it.      |
+| `changes requested` | Reviewer found actionable gaps.                                      |
+| `approved`          | Reviewer passed this revision; implementation is not authorized yet. |
+| `in development`    | Owner authorized the revision; implementation/repair may proceed.    |
+| `blocked`           | A workflow cannot proceed and needs attention.                       |
 
-`agents/route.mjs` holds the decisions that must not be wrong: which role an
-event starts, who is allowed to start it, and whether a model or effort override
-is one the CLI accepts. It is a module with tests rather than a `case` statement
-in YAML so the sandbox can exercise the routing table without spending
-subscription quota.
+These status labels are mutually exclusive when reconciled by
+`agents/state.mjs`. Other user labels are preserved. `ready for dev` is a
+separate owner authorization action, retained while implementation is
+authorized. Labels are a visible projection, never proof of reviewer or owner
+authority.
 
-| Setting                                | Canonical location                                                                                  | Override or enrollment                                                                   |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Planner model                          | Planner job in `.github/workflows/ai.yml`: `fable`                                                  | `AI_PLANNER_MODEL` Actions variable                                                      |
-| Plan reviewer model                    | `agents/route.mjs` and `codex-review.yml`: `gpt-6-astra`                                            | `AI_PLAN_REVIEWER_MODEL` Actions variable                                                |
-| Implementer model                      | Implementer job in `.github/workflows/ai.yml`: `opus`                                               | `AI_IMPLEMENTER_MODEL` Actions variable                                                  |
-| Claude effort                          | Role jobs in `ai.yml`: start at `high`                                                              | `AI_PLANNER_EFFORT`, `AI_IMPLEMENTER_EFFORT`                                             |
-| Plan review effort                     | `agents/route.mjs` and `codex-review.yml`: `medium`                                                 | `AI_PLAN_REVIEWER_EFFORT`: `low` or `medium`                                             |
-| Reviewer credentials                   | Consumer `codex-review` environment                                                                 | `CODEX_AUTH_JSON`, `AI_REVIEW_APP_ID`, `AI_REVIEW_APP_PRIVATE_KEY`                       |
-| Trusted reviewer identity              | `AI_REVIEW_APP_LOGIN`, default `hogasi-review[bot]`                                                 | Consumer Actions variable only for a differently named App                               |
-| Turn limits and timeouts               | Explicit per-role values in `ai.yml`, chosen and exercised in the sandbox                           | Change through a tooling PR                                                              |
-| Role enablement                        | `vars.AI_ROLES` checked by `ai.yml`; unset means disabled                                           | GitHub Actions variable: `planner`, then `planner,plan-reviewer,implementer,pr-reviewer` |
-| Role behavior                          | `agents/planner.md`, `agents/plan-reviewer.md`, `agents/pr-reviewer.md` and `agents/implementer.md` | Consumer conventions in its own `AGENTS.md`                                              |
-| Discovery method                       | `agents/skills/grilling/SKILL.md`                                                                   | GitHub adaptation in `agents/planner.md`                                                 |
-| Review instructions                    | `agents/review-guidelines.md`                                                                       | Copied into consumer `AGENTS.md`; subsequently owned by that repo                        |
-| PR model and effort                    | `agents/route.mjs` and `codex-review.yml`: `gpt-6-astra`, `medium`                                  | `AI_PR_REVIEWER_MODEL`, `AI_PR_REVIEWER_EFFORT` (`low` or `medium`)                      |
-| Claude OAuth token and App credentials | GitHub organization Actions secrets                                                                 | Explicitly granted to each enrolled repository and forwarded by its caller               |
-| Required checks and branch rules       | GitHub repository or scoped organization rulesets                                                   | Enrollment checklist in [setup.md](setup.md)                                             |
+The reviewer updates one App-owned findings summary instead of posting start and
+finish comments on every run. It includes the checkpoint link, verdict,
+findings, captured repository SHA and run link. A pending record supersedes a
+pass before model execution. Approval requires an authenticated pass for the
+checkpoint; an old label or human-copied record cannot grant it.
 
-Model and effort defaults are executable workflow settings, not prompt front
-matter requiring a custom parser. `ai.yml` passes the resolved values through
-`claude_args` as `--model` and `--effort` for Claude roles; the shared Codex
-workflow receives validated Astra model and effort inputs for both reviews.
-Validate overrides against supported values before invoking either provider; do
-not interpolate arbitrary variable contents into shell commands. Record the
-selected model and effort in run output.
+The owner applies `ready for dev` after review passes. Trusted code reads the
+actual label event and records its ID, owner and proposal digest. The revision
+and passing review must predate that event, and the event must predate the
+workflow run. If they fall in the same timestamp second, reapply the label:
+ambiguous ordering fails rather than approving a later revision. Replaying an
+old run cannot approve a new label event. Removing/reapplying the label requires
+fresh authorization; it cannot revive a previous record.
 
-Organization Actions variables supply shared overrides; repository variables win
-over them. Variables set only on `.tooling` do not configure consumers of a
-reusable workflow. Keep defaults in the workflow to ship them with its release.
-No separate `.github/ai.yml` configuration schema is needed.
+Verification after queueing checks the exact approved checkpoint, active label
+event, open issue and owner write permission. A change to main alone does not
+revoke approved scope. A new proposal, modified checkpoint, revoked owner
+permission or removed authorization does. Editing the navigation summary or
+original request does not silently change implementation scope; use
+`@claude replan` to revoke approval and publish a replacement proposal.
 
-Each consumer has a thin `.github/workflows/ai.yml` caller. It forwards only
-`CLAUDE_CODE_OAUTH_TOKEN`, `AI_APP_ID`, `AI_APP_PRIVATE_KEY` and the three
-reviewer secret names (whose values stay in `codex-review`), and declares needed
-workflow permissions. Secrets are not automatically forwarded by reuse. The
-caller to copy is in [setup.md](setup.md).
+## Current role handoffs
 
-`AI_APP_ID` holds the App's **client id**, not its numeric app id:
-`actions/create-github-app-token` deprecated `app-id` in favour of `client-id`,
-and using the deprecated input would break at its next major.
+An authorized human opens an issue or comments during discovery to start Fable.
+Fable applies `in review`; only that narrow builder-App label event starts plan
+review. The owner applies `ready for dev` for implementation. Ordinary comments
+on authorized issues do nothing. `@claude replan` revokes authorization and
+returns to discovery. `@claude` on an implementation PR requests a scoped
+repair. Automatic plan and PR corrections remain delivery 2.
 
-Prompts and skills are checked out with `job.workflow_sha` and
-`job.workflow_repository`, so they come from the same commit as the reusable
-workflow rather than from `main` or a moving `v1`. This is GitHub's documented
-mechanism for a reusable workflow reading files that sit beside it, but
-`actionlint` does not know those two context properties yet, which is what
-`.github/actionlint.yaml` suppresses. Still prove the pinning with a sandbox
-caller: a context property that silently resolves to empty would check out the
-default branch instead, and the ignore rule is the reason lint would not say so.
+The planner reads the repo-adapted grilling instructions in `agents/planner.md`
+and the vendored upstream skill. It asks only material owner decisions; code
+facts are its responsibility. The planner cannot push or open a PR. UX,
+architecture and documentation checks will be expanded in delivery 2 without
+creating mandatory extra agents for routine work.
 
-## Models and subscriptions
+## Review execution and writes
 
-- **Discovery and planning: Fable.** The `fable` alias currently selects Fable
-  5.1; use a supported explicit model ID when a release must retain a particular
-  version. Claude Code 2.1.255 or newer is required for Fable 5.1.
-- **Implementation, test writing, and repairs: Opus.** Use `opus` through the
-  same Claude Action and OAuth token, with a fresh run reading the approved
-  issue and repository rather than relying on hidden session state.
-- **Independent plan and PR review: GPT-6 Astra medium.** Subscription Codex CLI
-  on GitHub-hosted runners, using the separate reviewer App and environment.
-  Structured results are published by trusted code; no hosted or API fallback is
-  approved. PR reviews are COMMENT feedback, separate from CI and owner merge.
+The existing PR route accepts open, non-draft, same-repository App-authored
+`claude/issue-<n>` PRs against the default branch on opened, ready_for_review
+and synchronize events. It validates the owner-approved checkpoint and supplies
+the three-dot diff, committed base/head text, discussion and Actions results for
+the head. Reviewer tools are disabled. No PR scripts or dependency installs run
+in the privileged reviewer. Stacks are not yet admitted by this route.
 
-The intended authentication path is subscriptions. Fable is included within
-limits on Max and premium seats, but Pro requires usage credits. Verify access
-and available quota before enabling the planner. Missing access or exhausted
-quota must produce a visible failure, not a silent model downgrade.
+The complete prompt is limited to 512 KiB. Submodules fail visibly; binary
+contents are unavailable. Larger repos need scoped retrieval before enrollment.
+The runner rechecks proposal and code revisions before publishing COMMENT
+feedback tied to the head, not merge approval. Matching
+base/head/proposal/model/ effort inputs suppress duplicate model calls.
+Pending/missing CI is not a pass; CI completion alone does not start another PR
+review in delivery 1.
 
-Sources checked on 2026-09-09:
-[Claude model configuration](https://code.claude.com/docs/en/model-config),
-[Fable plan access](https://support.claude.com/en/articles/15424964-claude-fable-models-on-your-plan),
-[Codex GitHub reviews](https://learn.chatgpt.com/docs/third-party/github), and
-[Codex Action](https://learn.chatgpt.com/docs/github-action).
+Plan, PR and smoke modes share one `codex-subscription` queue per consumer.
+Persist the subscription login after model execution, including model failures,
+then clear runner credentials. One login cannot be shared across repositories
+without central serialization. The reviewer App and builder App stay separate.
+GitHub comment/label writes are not atomic; readers recheck records and scope. A
+hard runner termination can prevent persistence; stop queued runs and reseed
+credentials before retrying if the login is lost.
 
-## PR review boundaries
+## Files and settings
 
-The shared runner reads only App-authored, open, non-draft `claude/issue-<n>`
-PRs from the same repository against its default branch. It captures the
-approved issue body, three-dot diff, committed base/head text, PR discussion and
-Actions results for the exact head. Repository content is input data; Codex
-tools and repository script execution are disabled. Binary contents are
-unavailable and submodules or prompts exceeding 512 KiB fail visibly. Larger
-repositories need scoped retrieval before enrollment.
+| Responsibility           | Tooling location                                                                            | Consumer setting                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Event routing and models | `agents/route.mjs`, `.github/workflows/ai.yml`                                              | `AI_ROLES`; `AI_PLANNER_MODEL/EFFORT`, `AI_IMPLEMENTER_MODEL/EFFORT` |
+| Proposal checkpoints     | `agents/proposal.mjs`, `agents/planner.md`                                                  | Issue comments; original body unchanged                              |
+| State and approval       | `agents/state.mjs`, `agents/approval.mjs`                                                   | Provision labels and apply owner authorization                       |
+| Plan verdicts            | `agents/review.mjs`, `agents/plan-reviewer.md`                                              | `AI_PLAN_REVIEWER_MODEL/EFFORT`                                      |
+| PR verdicts              | `agents/pr-review.mjs`, `agents/pull-request.mjs`, `agents/pr-reviewer.md`                  | `AI_PR_REVIEWER_MODEL/EFFORT`                                        |
+| Runner and snapshots     | `agents/review-run.mjs`, `agents/review-snapshot.mjs`, `.github/workflows/codex-review.yml` | Private consumer, default-branch environment restriction             |
+| Credentials              | `agents/codex-auth.mjs`                                                                     | Three reviewer environment secrets, explicit caller mappings         |
+| Local conventions        | `agents/review-guidelines.md`                                                               | Consumer README, AGENTS.md and CLAUDE.md                             |
 
-Before publishing a COMMENT review, trusted code rechecks the PR and approved
-proposal. Matching reviewer records suppress duplicate calls for the same base,
-head, proposal, model and effort. The feedback names those revisions and reports
-CI as captured, without treating pending or absent checks as successful tests.
-CI completion alone does not schedule a review. Owner-directed repairs remain
-explicit; bot feedback never starts Claude. See
-[enrollment and live tests](setup.md#enable-pr-review).
+Reviewer defaults are Astra medium; explicit low effort is allowed. There is no
+hosted-model setting or API fallback. Claude defaults are Fable/Opus high. Role
+enablement is explicit and unset means disabled. Variables belong to the
+consumer; values on public tooling do not enroll it. Workflow and prompt
+versions are pinned together through the reusable workflow's commit identity.
 
-## Discovery and planning in the issue
+## Completion evidence
 
-The issue turns a problem or suggestion into a clear direction and actionable
-plan. Comments preserve the conversation; the body is the current specification:
-
-- Original request, preserved under `Reported`.
-- Clarified problem or opportunity, affected users, and repository evidence.
-- Agreed outcome, scope, and out-of-scope work.
-- Observable acceptance criteria.
-- Implementation plan: agreed approach and rationale, ordered steps, affected
-  components/files, and dependencies.
-- Verification plan: checks and tests that demonstrate each acceptance
-  criterion.
-
-Discovery and planning are two phases of the same role. No separate planning
-agent or document handoff. The planner reads the entire thread and relevant
-repository instructions before asking anything. It resolves facts itself and
-asks the owner only material decisions. Simple issues can reach a proposal in
-one run; there is no minimum interview length.
-
-Use the upstream
-[grilling skill](https://github.com/mattpocock/skills/blob/main/skills/productivity/grilling/SKILL.md)
-directly, with the workflow adaptations in `agents/planner.md` taking precedence
-where they differ. Keep the vendored skill unchanged. Its decision dependencies,
-batched questions, and recommended answers supply the discovery method.
-
-The
-[grill-me wrapper](https://github.com/mattpocock/skills/blob/main/skills/productivity/grill-me/SKILL.md)
-only invokes `grilling` and disables automatic model invocation. Do not vendor
-that wrapper for the automated planner. `grill-with-docs` additionally invokes
-`domain-modeling`, which writes glossary and architecture-decision files; those
-writes are outside our issue-only discovery phase. No separate `to-spec`
-dependency is needed for the agreed proposal format.
-
-Our adaptation in `agents/planner.md` reconstructs context from the issue
-thread, publishes questions as comments, and maintains the proposal in the issue
-body. Discovery covers only material decisions needed to implement and verify
-the issue; direct investigation is the default and delegation is optional. When
-no material decisions remain, publish the complete proposal and mark it `ready`.
-Until then the body stops after the decisions recorded so far: a scope and a
-plan written on the planner's own recommended answers read as settled and anchor
-the owner to choices they never made. Each decision records where it was settled
-— the owner's comment, or the file that answered it — so the proposal stays
-traceable to the exchange behind it. There is no additional confirmation round:
-the plan reviewer reads the plan against the code and applies `reviewed`, and
-the owner applies `ready for dev` to authorize implementation. Revision-specific
-approval remains a workflow control outside the model. Verify in the sandbox
-that a fresh run retains prior answers and that neither the upstream skill nor
-the planner starts implementation before approval.
-
-## Approval and event routing
-
-| Event                                                | Action                                                                                  |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Owner opens an issue                                 | Planner investigates and asks questions or publishes a proposal                         |
-| Owner comments during discovery                      | Planner continues the conversation                                                      |
-| Planner applies `ready`                              | Reviewer checks the proposal against the code and applies `reviewed` or removes `ready` |
-| Owner applies `ready for dev` to a reviewed proposal | Record the approved proposal revision, then start implementation                        |
-| Owner comments on an approved issue                  | Ordinary comments do not restart discovery or implementation                            |
-| Owner explicitly requests replanning                 | Clear approval and return to discovery; require approval of the revised proposal        |
-| Owner comments `@claude` on the linked PR            | Implementer addresses the requested repairs within the approved scope                   |
-| App pushes or opens a PR                             | Normal CI runs; eligible opened/ready/synchronize events start Astra PR review          |
-| Codex or App comments/reviews                        | Feedback only; no automatic Claude invocation                                           |
-
-Approval is enforced by `agents/approval.mjs`, invoked by the workflow.
-Recording hashes the exact issue body in the approval label event and requires
-the live body to match. Rerunning an old event cannot approve an edited
-proposal. A current passing record from the configured reviewer App must match
-both the proposal digest and the default-branch commit. Human-authored verdicts,
-label-only passes, pending reviews and superseded records do not authorize work.
-All of `ready`, `reviewed` and `ready for dev` must still be present.
-Verification reads all comment pages and uses the latest App-authored approval
-marker, including revocations; a human-authored marker cannot establish
-approval.
-
-Every record, clear, or verification checks the requesting actor's current
-repository write permission before making changes. Association with the
-repository alone is insufficient. API failures stop processing. Both agent jobs
-require successful routing; implementation also requires successful approval.
-Discovery may skip approval only when no approval operation was requested.
-
-The serialized implementation job rechecks approval after leaving its queue,
-before minting its write token. Its digest must match the one accepted by the
-preceding approval job, so a newly approved replacement proposal cannot silently
-replace the queued task. Editing an approved issue schedules label removal; even
-before that completes, a changed body fails verification.
-
-**Ceiling: the recheck is per run, not per push.** The workflow cannot hook the
-push that Claude itself makes, so an edit that lands mid-run is caught when the
-next run starts rather than before the current one writes. Closing that would
-mean wrapping the action, which is worth doing only if the sandbox shows an
-owner actually editing under a running job. The narrower control is already in
-place: the planner's App token has no `contents: write` and no pull request
-access, so the discovery role cannot write code however it is prompted.
-
-Retries resume the existing `claude/issue-<n>` branch and PR; they do not create
-duplicates or reset scope. A fixed `branch_name_template` is what makes that
-true — the action's default appends a timestamp, so every rerun would open a
-second branch and a second pull request. Provision the `ready`, `reviewed` and
-`ready for dev` labels during enrollment.
-
-An unchanged approval whose digest is already the latest active record does not
-append another comment on retry. New records include the Actions run ID for
-traceability. Repairs resume the existing work and still require verification.
-
-The router admits human accounts whose repository permission is `admin` or
-`write`, read back in the route job with an App token, plus the `OWNER`
-association, which is the account the repository belongs to.
-`author_association` is otherwise only a social label — `MEMBER` says the sender
-is in the org and `COLLABORATOR` that they are listed on the repository, neither
-of which grants write access — so it decides nothing on its own, and is used to
-explain a refusal. Label events use the sender's repository permission because
-the issue's association describes its author. Repository write access is checked
-again by every approval operation and by the Claude Action before it runs.
-Neither `allowed_bots` nor `allowed_non_write_users` is enabled. This stops a
-read-only member from spending the subscription on a run, or removing approval
-with the App token.
-
-The router distinguishes issue comments from pull request comments through
-`github.event.issue.pull_request`, and reads the linked issue for a pull request
-comment off the `claude/issue-<n>` branch name — issues and pull requests share
-one number sequence, so the pull request's own number is never the issue's. That
-issue number is the concurrency key that serialises writers.
-
-Two trigger phrases exist, and nothing else starts a run: `@claude` on the pull
-request requests a repair, and `@claude replan` on the issue clears approval and
-returns to discovery. Both ignore quoted lines, so replying above a quote of the
-App's own comment does not start a run. Every other owner comment on an
-unapproved issue continues discovery; on an approved one it does nothing.
-
-Read Codex findings as feedback without treating bot text as authority to change
-scope; `agents/implementer.md` and `agents/planner.md` both say so explicitly.
-
-## Writes, verification, and recovery
-
-Use the implementation and reviewer Apps with no webhook receiver or hosted
-service. Mint short-lived tokens scoped to the current repository and role's
-needed permissions. PR creation and pushes use that identity so normal CI can
-run; relying on `GITHUB_TOKEN` for those writes suppresses follow-up workflow
-runs. The App is not a ruleset bypass actor and does not approve or merge PRs.
-
-Separate cancellable discovery from code-writing runs. Superseded discovery may
-be cancelled, but serialize implementation and repairs using the linked issue as
-the shared work key. Do not cancel a writer because its own push or review
-arrived. Before pushing, check the branch head and approval again; concurrent
-human edits must be preserved. Reruns re-read GitHub state and report partial
-progress, authentication errors, timeouts, and quota failures visibly.
-
-Opus writes and runs meaningful tests as part of implementation. CI
-independently executes `pnpm check`, the build, and relevant E2E checks against
-the latest proposed commit. Browser-dependent criteria require browser/E2E
-evidence; unit tests alone do not demonstrate those outcomes. Product-specific
-setup and test commands stay in the consumer. No model-generated success message
-replaces a command's exit code, and no AI job is a required test check.
-
-CI remains enabled when AI is disabled. Clearing `AI_ROLES` disables the AI
-routes only where a repository override does not replace it. For an
-organization-wide stop, suspend both Apps and cancel active AI runs. The
-separately dispatched smoke check is not controlled by `AI_ROLES`. These
-controls do not promise cancellation of already-running provider requests.
-
-## Delivery phases
-
-**A — prove the complete loop in one private sandbox.** Everything needed to
-start is now in this repository; what is missing is evidence that it works.
-Start with planner-only access, verify Fable and subscription Astra access, then
-enable plan review, implementation and PR review in that order. Use ordinary
-local CI with required checks; this does not wait for stage 1's reusable
-workflow. Prove an issue reaches an approved plan, PR, failing check,
-owner-requested repair, green CI, review, and owner merge. All human interaction
-after enrollment happens in GitHub.
-
-Before phase A is complete, also exercise a changed proposal after approval, a
-duplicate event/rerun, a concurrent branch edit, a cancelled or quota-limited
-run, AI disablement with CI still active, and an App-authored PR reviewed by
-Codex. Three things in particular have no coverage outside a live run: that a
-failed approval recheck actually stops the implementer, which no unit test can
-reach because it is a property of the workflow's `if:` conditions rather than of
-`route.mjs`; that `job.workflow_sha` really pins the prompts; and that the
-per-role turn limits and timeouts in `ai.yml` — 60 turns and 30 minutes for the
-planner, 200 and 60 for the implementer — are near the right size. Both were
-chosen from reasoning, not evidence. Record actual opened, ready-for-review and
-synchronize events and verify subsequent commits receive a new review. Do not
-make a `changes_requested` verdict a dependency.
-
-**B — use it on product repo #1.** Adopt stage 1 CI, enroll secrets and scoped
-required checks, and carry the proven caller and prompts over. Measure completed
-tasks, owner corrections, repair passes, elapsed time, subscription quota, and
-Actions usage. Retire the sandbox when these checks have a maintained home. The
-template follows product repo #2, including AI enrollment instructions.
-
-**C — automate only observed repetition.** Automatic repair is optional and
-requires proven event routing, stale-review rejection, deduplication, and a
-workflow-enforced repair cap. Auto-merge is a separate decision, after at least
-a month of real reviews and a proven policy for review completion. Neither is
-needed to achieve the development loop.
-
-## Definition of done
-
-From opening an issue through merging its PR, the owner can discover, plan,
-approve, request fixes, inspect tests and review, and complete development
-inside GitHub. No separate tester, database, message bus, or hosted
-orchestration service is required. Fable/Opus access is proven, the review model
-is accurately reported, and failures leave enough state to resume safely.
+Each delivery must pass `pnpm check`, actionlint, secret scanning and its
+sandbox scenarios before consumer rollout. CI remains independently required.
+Full v2 completion includes automatic correction, human escalation, scope
+revocation, duplicate/stale events, child delivery, stack repair and conflict
+handling. Merges remain human-controlled. Long-term subscription renewal still
+requires observation; successful write-back is not proof of indefinite renewal.

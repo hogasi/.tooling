@@ -30,6 +30,12 @@
   "health": {
     "thresholdOverrides": [
       {
+        "files": ["agents/state.mjs", "agents/proposal.mjs"],
+        "functions": ["readProposal", "readDevEvent", "setStatus"],
+        "maxCrap": 57,
+        "reason": "Estimated CRAP does not measure node:test coverage. proposal.test.mjs and state.test.mjs exercise checkpoint identity, edits, forged/deleted/superseded records, pagination, status preservation and authorization removal. Keep other complexity limits unchanged."
+      },
+      {
         "files": ["agents/review-run.mjs"],
         "functions": ["preparePullRequest", "preparePlan"],
         "maxCrap": 73,
@@ -56,7 +62,8 @@
       {
         "files": ["agents/review.mjs"],
         "functions": [
-          "parseRecord",
+          "validateRecord",
+          "publishReview",
           "readReadyIssue",
           "validateVerdict",
           "currentSha",
@@ -79,6 +86,8 @@
           "latestApproval",
           "readIssue",
           "requireApprovalEvent",
+          "requireReviewedEvent",
+          "requireReviewBeforeApproval",
           "validateContext",
           "verifyApproval"
         ],

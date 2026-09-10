@@ -103,7 +103,7 @@ function prepare() {
 function preparePlan(event) {
   if (
     event.action !== "labeled" ||
-    event.label?.name !== "ready" ||
+    event.label?.name !== "in review" ||
     event.issue?.number !== Number(context.issueNumber)
   ) {
     throw new Error("Invalid review event");

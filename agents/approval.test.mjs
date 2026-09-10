@@ -3,330 +3,184 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 
 import { applyApproval, readApprovedProposal } from "./approval.mjs";
-
-const appLogin = "hogasi-ai[bot]";
-const body = "## Proposal\nImplement the agreed feature.\n";
-const digestOf = (value) => createHash("sha256").update(value).digest("hex");
-const digest = digestOf(body);
-const issue = {
-  body,
-  labels: [{ name: "ready" }, { name: "reviewed" }, { name: "ready for dev" }],
-  number: 7
-};
 const context = {
   actor: "owner",
-  appLogin,
-  event: { action: "labeled", issue, label: { name: "ready for dev" } },
+  appLogin: "builder[bot]",
+  event: {
+    action: "labeled",
+    issue: { number: 7 },
+    label: { name: "ready for dev" }
+  },
   issueNumber: "7",
   mode: "verify",
-  repository: "hogasi/sandbox",
-  reviewerLogin: "hogasi-review[bot]",
-  runId: "123",
-  runUrl: "https://github.com/hogasi/sandbox/actions/runs/123"
+  repository: "org/repo",
+  reviewerLogin: "reviewer[bot]",
+  runId: "100"
 };
-const record = (overrides = {}) => ({
-  body: `<!-- hogasi-ai approval sha256=${digest} run=100 -->`,
-  id: 1,
-  user: { login: appLogin },
-  ...overrides
-});
-
+const body = "Implement the deliverable.";
+const digest = createHash("sha256").update(`10\n${body}`).digest("hex");
+const proposal = {
+  body: `<!-- hogasi-ai proposal -->\n${body}`,
+  created_at: "2026-09-10T10:00:00Z",
+  id: 10,
+  updated_at: "2026-09-10T10:00:00Z",
+  user: { login: context.appLogin }
+};
+const summary = {
+  body: '<!-- hogasi-ai planning {"proposal":10} -->',
+  id: 11,
+  user: { login: context.appLogin }
+};
+const review = {
+  body: `<!-- hogasi-review plan ${JSON.stringify({ digest, proposal: 10, run: "99.1", sha: "a".repeat(40), status: "pass" })} -->`,
+  id: 12,
+  updated_at: "2026-09-10T10:01:00Z",
+  user: { login: context.reviewerLogin }
+};
+const authorization = {
+  body: `<!-- hogasi-ai authorization ${JSON.stringify({ actor: "owner", digest, event: 20, proposal: 10 })} -->`,
+  id: 13,
+  user: { login: context.appLogin }
+};
+const event = {
+  actor: { login: "owner" },
+  created_at: "2026-09-10T10:02:00Z",
+  event: "labeled",
+  id: 20,
+  label: { name: "ready for dev" }
+};
 function fixture(overrides = {}) {
   const state = {
-    issue,
-    pages: [[record()]],
+    authorization,
+    event,
     permission: "write",
+    proposal,
+    review,
     ...overrides
   };
+  const issue = {
+    body: "Original request",
+    labels: [{ name: "approved" }, { name: "ready for dev" }],
+    number: 7,
+    state: "open",
+    ...overrides.issue
+  };
   const writes = [];
-  const reviewRecords = state.reviewRecords ?? [
-    {
-      body: `<!-- hogasi-review plan ${JSON.stringify({ digest: digestOf(state.issue.body), run: "100.1", sha: "a".repeat(40), status: "pass" })} -->`,
-      id: 900,
-      user: { login: context.reviewerLogin }
-    }
-  ];
   const reads = new Map([
-    ["repos/hogasi/sandbox", () => ({ default_branch: "main" })],
+    ["repos/org/repo/actions/runs/100", { created_at: "2026-09-10T10:03:00Z" }],
     [
-      "repos/hogasi/sandbox/collaborators/owner/permission",
-      () => ({ permission: state.permission })
+      "repos/org/repo/collaborators/owner/permission",
+      { permission: state.permission }
     ],
-    ["repos/hogasi/sandbox/commits/main", () => ({ sha: "a".repeat(40) })],
-    ["repos/hogasi/sandbox/issues/7", () => state.issue],
+    ["repos/org/repo/issues/7", issue],
     [
-      "repos/hogasi/sandbox/issues/7/comments",
-      ({ paginate }) => {
-        assert.equal(paginate, true);
-        return [...state.pages, reviewRecords];
-      }
-    ]
+      "repos/org/repo/issues/7/comments",
+      [
+        [state.proposal, summary, state.review, state.authorization].filter(
+          Boolean
+        )
+      ]
+    ],
+    ["repos/org/repo/issues/7/events", [[state.event]]],
+    ["repos/org/repo/issues/7/labels", issue.labels]
   ]);
   const request = (options) => {
-    if (options.method && options.method !== "GET") {
+    if (options.method) {
       writes.push(options);
       return {};
     }
-    return reads.get(options.path)(options);
+    assert.ok(reads.has(options.path), options.path);
+    return reads.get(options.path);
   };
   return { request, writes };
 }
-
-test("records the exact approved event body including trailing newlines", () => {
-  const { request, writes } = fixture({ pages: [[]] });
+test("records a reviewed checkpoint and transitions to in development", () => {
+  const { request, writes } = fixture({ authorization: null });
   assert.equal(applyApproval({ ...context, mode: "record" }, request), digest);
-  assert.equal(writes.length, 1);
-  assert.ok(writes[0].body.body.includes(`sha256=${digest} run=123`));
+  assert.match(writes[0].body.body, /"proposal":10/);
+  assert.deepEqual(writes.at(-1).body, { labels: ["in development"] });
 });
-
-test("an old approval event cannot approve the current edited proposal", () => {
-  const { request, writes } = fixture({
-    issue: { ...issue, body: "Changed scope" }
-  });
-  assert.throws(
-    () => applyApproval({ ...context, mode: "record" }, request),
-    /changed/
+test("repairs retain approval across main and summary changes without reading main", () => {
+  assert.equal(
+    applyApproval(
+      context,
+      fixture({ issue: { body: "Changed original request" } }).request
+    ),
+    digest
   );
-  assert.equal(writes.length, 0);
-});
-
-test("an approval event for another issue cannot record approval", () => {
-  const { request, writes } = fixture();
-  const event = { ...context.event, issue: { ...issue, number: 8 } };
-  assert.throws(
-    () => applyApproval({ ...context, event, mode: "record" }, request),
-    /approval event/
+  assert.equal(
+    readApprovedProposal(context, fixture().request).proposal.body,
+    body
   );
-  assert.equal(writes.length, 0);
 });
-
-test("an ordinary event cannot be used to record approval", () => {
-  const { request, writes } = fixture();
-  const event = { ...context.event, action: "edited" };
-  assert.throws(
-    () => applyApproval({ ...context, event, mode: "record" }, request),
-    /approval event/
-  );
-  assert.equal(writes.length, 0);
-});
-
-for (const mode of ["record", "verify", "clear"]) {
-  test(`read-only access cannot ${mode} approval`, () => {
-    const { request, writes } = fixture({ permission: "read" });
-    assert.throws(
-      () => applyApproval({ ...context, mode }, request),
-      /write access/
-    );
+for (const overrides of [
+  { authorization: null },
+  { authorization: { ...authorization, user: { login: "owner" } } },
+  {
+    authorization: {
+      ...authorization,
+      body: '<!-- hogasi-ai authorization {"cleared":true} -->'
+    }
+  },
+  { proposal: { ...proposal, body: proposal.body + "Changed" } },
+  { proposal: { ...proposal, updated_at: "2026-09-10T10:01:00Z" } },
+  { event: { ...event, id: 21 } },
+  { event: { ...event, event: "unlabeled" } },
+  { issue: { labels: [] } },
+  { permission: "read" },
+  { issue: { state: "closed" } }
+]) {
+  test(`rejects invalidated authorization ${JSON.stringify(overrides)}`, () => {
+    const { request, writes } = fixture(overrides);
+    assert.throws(() => applyApproval(context, request));
     assert.equal(writes.length, 0);
   });
 }
-
-for (const mode of ["record", "verify"]) {
-  test(`${mode} rejects approval after the label is removed`, () => {
-    const { request, writes } = fixture({
-      issue: { ...issue, labels: [{ name: "ready" }, { name: "reviewed" }] }
-    });
+test("old owner event cannot approve a later review or re-applied label", () => {
+  for (const overrides of [
+    { review: { ...review, updated_at: "2026-09-10T10:02:00Z" } },
+    { event: { ...event, created_at: "2026-09-10T10:04:00Z" } }
+  ]) {
+    const { request, writes } = fixture(overrides);
     assert.throws(
-      () => applyApproval({ ...context, mode }, request),
-      /ready for dev/
+      () => applyApproval({ ...context, mode: "record" }, request),
+      /approval event/
     );
     assert.equal(writes.length, 0);
-  });
-}
-
-test("a cleared record on a later page revokes an earlier approval", () => {
-  const pages = [
-    [record()],
-    [record({ body: "<!-- hogasi-ai approval cleared -->", id: 2 })]
-  ];
-  const { request } = fixture({ pages });
-  assert.throws(() => applyApproval(context, request), /revoked/);
+  }
 });
-
-test("only the most recent approval across all pages is verified", () => {
-  const pages = [
-    [record({ body: `<!-- hogasi-ai approval sha256=${digestOf("old")} -->` })],
-    [record({ id: 2 })]
-  ];
-  const { request } = fixture({ pages });
-  assert.equal(applyApproval(context, request), digest);
-});
-
-test("a cleared record followed by renewed approval allows repairs", () => {
-  const pages = [
-    [record({ body: "<!-- hogasi-ai approval cleared -->" })],
-    [record({ id: 2 })]
-  ];
-  const { request } = fixture({ pages });
-  assert.equal(applyApproval(context, request), digest);
-});
-
-test("a human-authored marker cannot establish approval", () => {
-  const { request } = fixture({
-    pages: [[record({ user: { login: "owner" } })]]
-  });
-  assert.throws(() => applyApproval(context, request), /No approval/);
-});
-
-test("a malformed App marker fails closed instead of reviving an older approval", () => {
-  const pages = [
-    [record(), record({ body: "<!-- hogasi-ai approval broken -->", id: 2 })]
-  ];
-  const { request } = fixture({ pages });
-  assert.throws(() => applyApproval(context, request), /Malformed approval/);
-});
-
-test("a changed body fails the recheck after a writer leaves the queue", () => {
-  const initial = fixture();
-  const expectedDigest = applyApproval(context, initial.request);
-  const queued = fixture({ issue: { ...issue, body: "Changed while queued" } });
+test("a different approved revision cannot replace queued scope", () => {
   assert.throws(
-    () => applyApproval({ ...context, expectedDigest }, queued.request),
-    /changed/
-  );
-});
-
-test("a different newly approved proposal cannot replace the queued proposal", () => {
-  const changedBody = "Newly approved scope";
-  const pages = [
-    [
-      record({
-        body: `<!-- hogasi-ai approval sha256=${digestOf(changedBody)} -->`
-      })
-    ]
-  ];
-  const { request } = fixture({
-    issue: { ...issue, body: changedBody },
-    pages
-  });
-  assert.throws(
-    () => applyApproval({ ...context, expectedDigest: digest }, request),
+    () =>
+      applyApproval(
+        { ...context, expectedDigest: "b".repeat(64) },
+        fixture().request
+      ),
     /queued/
   );
 });
-
-test("removing approval while queued prevents the implementation recheck", () => {
-  const { request } = fixture({ issue: { ...issue, labels: [] } });
+test("an approval record cannot be minted without a passing review", () => {
   assert.throws(
-    () => applyApproval({ ...context, expectedDigest: digest }, request),
-    /ready for dev/
+    () =>
+      applyApproval(
+        { ...context, mode: "record" },
+        fixture({ review: null }).request
+      ),
+    /passing/
   );
 });
-
-test("a matching approval can be verified again without writes", () => {
+test("replan revokes authorization before setting learning status", () => {
   const { request, writes } = fixture();
-  assert.equal(
-    applyApproval({ ...context, expectedDigest: digest }, request),
-    digest
-  );
-  assert.equal(writes.length, 0);
+  applyApproval({ ...context, mode: "clear" }, request);
+  assert.match(writes[0].path, /ready%20for%20dev/);
+  assert.match(writes[1].body.body, /cleared/);
 });
-
-test("retrying the same recorded approval does not append another record", () => {
-  const { request, writes } = fixture();
-  assert.equal(applyApproval({ ...context, mode: "record" }, request), digest);
-  assert.equal(writes.length, 0);
-});
-
-test("an unreviewed proposal cannot be approved", () => {
+test("legacy approvals cannot silently authorize the new record format", () => {
   const { request } = fixture({
-    issue: { ...issue, labels: [{ name: "ready" }, { name: "ready for dev" }] }
-  });
-  assert.throws(
-    () => applyApproval({ ...context, mode: "record" }, request),
-    /reviewed/
-  );
-});
-
-test("replanning removes the label and records revocation", () => {
-  const { request, writes } = fixture();
-  applyApproval({ ...context, mode: "clear" }, request);
-  assert.equal(writes[0].method, "DELETE");
-  assert.match(writes[0].path, /labels\/ready%20for%20dev$/);
-  assert.match(writes[1].body.body, /approval cleared/);
-});
-
-test("clearing an absent label still leaves an explicit revocation", () => {
-  const { request, writes } = fixture({ issue: { ...issue, labels: [] } });
-  applyApproval({ ...context, mode: "clear" }, request);
-  assert.equal(writes.length, 1);
-  assert.match(writes[0].body.body, /approval cleared/);
-});
-
-test("an API failure stops approval processing", () => {
-  const request = () => {
-    throw new Error("GitHub unavailable");
-  };
-  assert.throws(() => applyApproval(context, request), /GitHub unavailable/);
-});
-
-test("failed label removal does not report successful revocation", () => {
-  const base = fixture();
-  const request = (options) => {
-    if (options.method === "DELETE") {
-      throw new Error("GitHub refused deletion");
+    authorization: {
+      ...authorization,
+      body: `<!-- hogasi-ai approval sha256=${digest} -->`
     }
-    return base.request(options);
-  };
-  assert.throws(
-    () => applyApproval({ ...context, mode: "clear" }, request),
-    /refused deletion/
-  );
-  assert.equal(base.writes.length, 0);
-});
-
-test("malformed paginated comments fail closed", () => {
-  const { request } = fixture({ pages: [{}] });
-  assert.throws(() => applyApproval(context, request), /comment pages/);
-});
-
-test("malformed issue data fails closed", () => {
-  const { request } = fixture({
-    issue: { ...issue, body: 42 },
-    reviewRecords: []
   });
-  assert.throws(() => applyApproval(context, request), /issue/);
-});
-
-test("invalid repository paths are rejected before GitHub is called", () => {
-  const request = () => {
-    assert.fail("Unexpected API call");
-  };
-  assert.throws(
-    () => applyApproval({ ...context, repository: "../other" }, request),
-    /repository/
-  );
-});
-
-for (const mode of ["record", "verify"]) {
-  test(`${mode} rejects forged reviewed labels without a reviewer record`, () => {
-    const { request, writes } = fixture({ reviewRecords: [] });
-    assert.throws(
-      () => applyApproval({ ...context, mode }, request),
-      /current passing/
-    );
-    assert.equal(writes.length, 0);
-  });
-}
-
-test("PR review reads owner approval without minting implementation authority", () => {
-  const { request, writes } = fixture({ issue: { ...issue, state: "open" } });
-  const proposal = readApprovedProposal(context, request);
-  assert.equal(proposal.digest, digest);
-  assert.equal(proposal.issue.body, issue.body);
-  assert.equal(writes.length, 0);
-});
-test("PR review rejects a revoked proposal", () => {
-  const { request } = fixture({
-    issue: { ...issue, state: "open" },
-    pages: [[record({ body: "<!-- hogasi-ai approval cleared -->" })]]
-  });
-  assert.throws(() => readApprovedProposal(context, request), /revoked/);
-});
-test("PR review rejects a human-authored approval marker", () => {
-  const { request } = fixture({
-    issue: { ...issue, state: "open" },
-    pages: [[record({ user: { login: "owner" } })]]
-  });
-  assert.throws(() => readApprovedProposal(context, request), /No approval/);
+  assert.throws(() => applyApproval(context, request), /No approval/);
 });

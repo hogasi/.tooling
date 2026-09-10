@@ -17,6 +17,8 @@ const endpoint = args[1];
 const method = args[args.indexOf('--method') + 1];
 const routes = new Map([
  ['repos/hogasi/sandbox/issues/9', state.issue],
+ ['repos/hogasi/sandbox/issues/9/labels', state.issue.labels],
+ ['repos/hogasi/sandbox/issues/9/events', [[{event: 'labeled', id: 20, label: {name: 'ready for dev'}}]]],
  ['repos/hogasi/sandbox/issues/9/comments', [state.comments]],
  ['repos/hogasi/sandbox/issues/10/comments', [[]]],
  ['repos/hogasi/sandbox/pulls/10', state.pullRequest],
@@ -32,6 +34,7 @@ if (method === 'GET') {
  const body = args.includes('--input') ? JSON.parse(readFileSync(0, 'utf8')) : undefined;
  state.writes.push({ endpoint, method, body });
  if (endpoint.endsWith('/reviews')) state.reviews.push({ ...body, state: 'COMMENTED', user: { login: 'hogasi-review[bot]' } });
+ else if (method === 'PATCH' && endpoint.includes('/issues/comments/')) { const comment = state.comments.find(item => String(item.id) === endpoint.split('/').at(-1)); Object.assign(comment, body); }
  else if (endpoint.endsWith('/comments')) state.comments.push({ ...body, id: state.comments.length + 1, user: { login: 'hogasi-review[bot]' } });
  else if (method === 'DELETE') state.issue.labels = state.issue.labels.filter(label => label.name !== endpoint.split('/').at(-1));
  else if (endpoint.endsWith('/labels')) state.issue.labels.push(...body.labels.map(name => ({ name })));
@@ -60,11 +63,13 @@ function fixture(context, mode) {
   const head = git(["rev-parse", "HEAD"]);
   const issue = {
     body: "Return the new value.",
-    labels: ["ready", "reviewed", "ready for dev"].map((name) => ({ name })),
+    labels: ["in review", "approved", "ready for dev"].map((name) => ({
+      name
+    })),
     number: 9,
     state: "open"
   };
-  const digest = createHash("sha256").update(issue.body).digest("hex");
+  const digest = createHash("sha256").update(`10\n${issue.body}`).digest("hex");
   const pullRequest = {
     base: { ref: "main", repo: { full_name: "hogasi/sandbox" }, sha: base },
     draft: false,
@@ -81,7 +86,7 @@ function fixture(context, mode) {
   const eventFile = path.join(directory, "event.json");
   const event =
     mode === "plan"
-      ? { action: "labeled", issue, label: { name: "ready" } }
+      ? { action: "labeled", issue, label: { name: "in review" } }
       : { action: "opened", pull_request: pullRequest };
   writeFileSync(eventFile, JSON.stringify(event));
   writeFileSync(
@@ -90,7 +95,19 @@ function fixture(context, mode) {
       base,
       comments: [
         {
-          body: `<!-- hogasi-ai approval sha256=${digest} run=100 -->`,
+          body: `<!-- hogasi-ai proposal -->\n${issue.body}`,
+          created_at: "2026-09-10T10:00:00Z",
+          id: 10,
+          updated_at: "2026-09-10T10:00:00Z",
+          user: { login: "hogasi-ai[bot]" }
+        },
+        {
+          body: '<!-- hogasi-ai planning {"proposal":10} -->',
+          id: 11,
+          user: { login: "hogasi-ai[bot]" }
+        },
+        {
+          body: `<!-- hogasi-ai authorization ${JSON.stringify({ actor: "owner", digest, event: 20, proposal: 10 })} -->`,
           id: 1,
           user: { login: "hogasi-ai[bot]" }
         }
@@ -157,7 +174,7 @@ for (const mode of ["plan", "pr"]) {
     run("publish");
     if (mode === "plan") {
       assert.match(read().comments.at(-1).body, /"status":"pass"/);
-      assert.ok(read().issue.labels.some((label) => label.name === "reviewed"));
+      assert.ok(read().issue.labels.some((label) => label.name === "approved"));
     } else {
       assert.equal(read().reviews[0].commit_id, head);
       assert.equal(read().reviews[0].event, "COMMENT");

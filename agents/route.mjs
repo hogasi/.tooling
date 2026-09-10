@@ -20,8 +20,8 @@ import { routePullRequest } from "./pull-request.mjs";
 const AUTHORIZED_ASSOCIATIONS = new Set(["COLLABORATOR", "MEMBER", "OWNER"]);
 const OWNER_ASSOCIATION = "OWNER";
 const DEV_LABEL = "ready for dev";
-const READY_LABEL = "ready";
-const REVIEWED_LABEL = "reviewed";
+const READY_LABEL = "in review";
+const REVIEWED_LABEL = "approved";
 const REPAIR_PATTERN = /(?:^|\s)@claude(?![\w-])/i;
 const REPAIR_PHRASE = "@claude";
 const REPLAN_PATTERN = /(?:^|\s)@claude\s+replan\b/i;
@@ -101,7 +101,7 @@ const senderAuthority = (event) =>
     : labelAuthority(event);
 
 /**
- * The planner applies `ready` as the App, so the review it asks for arrives as
+ * The planner applies `in review` as the App, so the review it asks for arrives as
  * a bot event. This issue-label exception admits only the App's own login;
  * PR events have a separate provenance check. The login comes from the workflow's
  * App-token step rather than from the payload, so a comment claiming to be the
@@ -166,14 +166,10 @@ const routeIssueComment = ({ commentBody, labels }) => {
   return { approval: "none", reason: "discovery continues", role: "planner" };
 };
 
-const routeIssueEdited = ({ labels }) =>
-  labels.includes(DEV_LABEL)
-    ? {
-        approval: "clear",
-        reason: "the approved proposal was edited and needs approving again",
-        role: ""
-      }
-    : skip("editing an unapproved issue changes nothing");
+const routeIssueEdited = () =>
+  skip(
+    "the original request is not the approved proposal; use @claude replan to change scope"
+  );
 
 const routeIssueLabeled = ({ labelName, labels }) => {
   if (labelName === READY_LABEL) {
@@ -192,20 +188,17 @@ const routeIssueLabeled = ({ labelName, labels }) => {
 
   return {
     approval: "record",
-    reason: "an owner approved the reviewed proposal in the issue body",
+    reason: "an owner approved the reviewed proposal revision",
     role: "implementer"
   };
 };
 
 /**
- * `ready` says the planner has nothing material left to decide and `reviewed`
- * says the plan reviewer found nothing to fix. Approving without either approves a
- * proposal that is still moving, so it fails rather than implementing.
+ * `approved` reports a reviewer pass. The approval job independently validates
+ * the checkpoint and owner event before authorizing any implementation.
  */
 const requireReviewedProposal = (labels) => {
-  const missing = [READY_LABEL, REVIEWED_LABEL].filter(
-    (label) => !labels.includes(label)
-  );
+  const missing = [REVIEWED_LABEL].filter((label) => !labels.includes(label));
 
   if (missing.length > 0) {
     throw new Error(
