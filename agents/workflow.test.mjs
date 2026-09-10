@@ -12,6 +12,21 @@ const codexWorkflow = readFileSync(
   "utf8"
 );
 
+test("subscription persistence uses only the environment's reviewer App", () => {
+  assert.match(codexWorkflow, /environment: codex-review/);
+  assert.match(
+    codexWorkflow,
+    /client-id: \$\{\{ secrets.AI_REVIEW_APP_ID \}\}/
+  );
+  assert.match(
+    codexWorkflow,
+    /private-key: \$\{\{ secrets.AI_REVIEW_APP_PRIVATE_KEY \}\}/
+  );
+  assert.doesNotMatch(codexWorkflow, /\bAI_APP_ID\b|\bAI_APP_PRIVATE_KEY\b/);
+  assert.doesNotMatch(codexWorkflow.split("jobs:", 1)[0], /secrets:/);
+  assert.doesNotMatch(workflow, /AI_REVIEW_APP_/);
+});
+
 test("subscription jobs serialize without replacing waiting reviews", () => {
   assert.match(codexWorkflow, /group: codex-subscription/);
   assert.match(codexWorkflow, /queue: max/);
