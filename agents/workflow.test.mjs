@@ -369,3 +369,18 @@ test("automatic repairs verify the recorded owner and claim work inside the shar
     /allowed_bots:[\s\S]*?needs.route.outputs.automatic == 'true'/
   );
 });
+
+test("the builder checks out with write credentials only after approval and uses the repository runtime", () => {
+  const implementer = job("implement");
+  const checkout = implementer.indexOf(
+    "\n          token: ${{ steps.app-token.outputs.token }}"
+  );
+  assert.ok(
+    checkout >
+      implementer.indexOf(
+        "Recheck the queued proposal before granting write access"
+      )
+  );
+  assert.match(implementer, /node-version-file:/);
+  assert.match(implementer, /uses: pnpm\/action-setup@/);
+});
