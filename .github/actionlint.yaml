@@ -1,0 +1,8 @@
+# `job.workflow_sha` and `job.workflow_repository` are how a reusable workflow
+# checks out its own commit, and GitHub documents them, but actionlint's copy
+# of the `job` context predates them. Drop these entries once actionlint knows
+# the properties.
+paths:
+  .github/workflows/ai.yml:
+    ignore:
+      - 'property "workflow_(sha|repository)" is not defined in object type'
