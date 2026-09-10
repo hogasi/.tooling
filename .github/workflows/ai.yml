@@ -71,6 +71,7 @@ jobs:
           # repository permission; the collaborator endpoint needs it, and no
           # token available to this job can read it without the App.
           permission-administration: read
+          permission-contents: read
           permission-pull-requests: read
           permission-actions: read
           permission-issues: read

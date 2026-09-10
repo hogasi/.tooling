@@ -256,6 +256,11 @@ test("the model cannot execute repository scripts or receive GitHub write tokens
   );
 });
 
+test("routing can read branch refs without repository write authority", () => {
+  assert.match(job("route"), /permission-contents: read/);
+  assert.doesNotMatch(job("route"), /permission-[\w-]+: write/);
+});
+
 test("routing knows the App's own login so the planner can ask for review", () => {
   const route = job("route");
 
