@@ -191,14 +191,19 @@ cannot provide that lock.
        uses: hogasi/.tooling/.github/workflows/codex-review.yml@FULL_COMMIT_SHA
        permissions:
          contents: read
+       secrets:
+         CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+         AI_REVIEW_APP_ID: ${{ secrets.AI_REVIEW_APP_ID }}
+         AI_REVIEW_APP_PRIVATE_KEY: ${{ secrets.AI_REVIEW_APP_PRIVATE_KEY }}
    ```
 
    All three secrets belong to the called job's `codex-review` environment; the
-   caller forwards no secrets. The reusable workflow declares those names as
-   optional so callers are not required to provide repository-level values. Keep
-   the existing `AI_APP_*` credentials reserved for discovery and
-   implementation. Environment secrets are read when the job starts, so a
-   waiting job sees the preceding job's credential update.
+   caller must explicitly map those names as shown. In the sandbox, omitting the
+   mappings delivered empty values even with the environment and optional secret
+   declarations present. The environment supplies the values when the called job
+   starts; do not duplicate credentials at repository level or use
+   `secrets: inherit`. Keep the existing `AI_APP_*` credentials reserved for
+   discovery and implementation.
 
 5. Run it twice, then queue three runs. Confirm all execute, the model check
    passes, persistence succeeds, and the environment secret's update timestamp
@@ -206,6 +211,25 @@ cannot provide that lock.
    They do not prove long-term token renewal; the local synthetic rotation test
    verifies write-back of changed credentials, and live renewal must be
    observed.
+
+On September 10, 2026,
+[sandbox run 34481335939](https://github.com/hogasi/ai-sandbox/actions/runs/34481335939)
+passed with the explicit mappings: credential restore, Astra medium access,
+reviewer App authentication, credential write-back and cleanup all succeeded.
+The secret update timestamp advanced to `2026-09-10T13:14:20Z`.
+[The repeat run](https://github.com/hogasi/ai-sandbox/actions/runs/34482741591)
+also passed using the saved login. Three runs dispatched in quick succession
+then completed sequentially without cancellation:
+
+| Run                                                                          | Execution window (UTC, September 10, 2026) | Result |
+| ---------------------------------------------------------------------------- | ------------------------------------------ | ------ |
+| [34482977797](https://github.com/hogasi/ai-sandbox/actions/runs/34482977797) | 13:30:22–13:30:48                          | Passed |
+| [34482981484](https://github.com/hogasi/ai-sandbox/actions/runs/34482981484) | 13:30:52–13:31:16                          | Passed |
+| [34482985724](https://github.com/hogasi/ai-sandbox/actions/runs/34482985724) | 13:31:21–13:31:52                          | Passed |
+
+Each queued run passed Astra medium access, credential write-back and cleanup.
+This completes the subscription preflight, including repeat use and queue
+behavior. It does not prove live token rotation or long-term renewal.
 
 The runner pins Codex `0.154.0`, uses an empty working directory, and reads no
 consumer code. It saves the current login even if the model fails, then deletes
