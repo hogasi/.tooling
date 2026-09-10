@@ -65,14 +65,16 @@ in step 4 has been applied or verified against GitHub.
      limits; Pro needs usage credits. Do not enable paid overage as an implicit
      fallback.
    - Set `AI_ROLES` as an Actions variable for enrolled repositories: `planner`
-     first, then `planner,implementer` once approval and CI are proven. Unset
-     means disabled. An org variable can supply a shared value; repository
-     overrides take precedence, so clearing the org value is not a global stop.
+     first, then `planner,reviewer`, then `planner,reviewer,implementer` once
+     approval and CI are proven. Unset means disabled. An org variable can
+     supply a shared value; repository overrides take precedence, so clearing
+     the org value is not a global stop.
    - Claude model defaults belong in `.tooling/.github/workflows/ai.yml`:
-     planner `fable`, implementer `opus`, effort `high`. Only create
-     `AI_PLANNER_MODEL`, `AI_IMPLEMENTER_MODEL`, `AI_PLANNER_EFFORT`, or
-     `AI_IMPLEMENTER_EFFORT` Actions variables when overriding those defaults.
-     Variables on the tooling repository alone do not configure consumers.
+     planner `fable`, reviewer `opus`, implementer `opus`, effort `high`. Only
+     create `AI_PLANNER_MODEL`, `AI_REVIEWER_MODEL`, `AI_IMPLEMENTER_MODEL`,
+     `AI_PLANNER_EFFORT`, `AI_REVIEWER_EFFORT`, or `AI_IMPLEMENTER_EFFORT`
+     Actions variables when overriding those defaults. Variables on the tooling
+     repository alone do not configure consumers.
    - Connect each enrolled repo in Codex settings and enable automatic reviews.
      Verify whether GPT-6 Astra can be selected and record the actual model
      selection capability. Hosted review cannot be configured by an
@@ -94,7 +96,7 @@ in step 4 has been applied or verified against GitHub.
      deprecated. Grant both secrets to each enrolled repo. The workflow mints a
      token per job, scoped to that job's permissions.
    - Add the thin AI caller below, explicitly forwarding the three named
-     secrets, and provision `ready` and `approved` labels. Add
+     secrets, and provision `ready`, `reviewed` and `ready for dev` labels. Add
      [review-guidelines.md](../agents/review-guidelines.md) to the consumer's
      `AGENTS.md`. Complete this again for new repositories; copying a workflow
      does not grant secret access or connect Codex automatically.

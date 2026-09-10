@@ -13,20 +13,28 @@ const condition = (name) =>
   job(name)
     .match(/\n {4}if:\n([\s\S]*?)\n {4}runs-on:/)[1]
     .trim();
+const jobFor = {
+  implementer: "implement",
+  planner: "plan",
+  reviewer: "review"
+};
 const eligible = ({ approval, role, route }) =>
-  runInNewContext(condition(role === "planner" ? "plan" : "implement"), {
+  runInNewContext(condition(jobFor[role]), {
     always: () => true,
     needs: {
       approval: { result: approval },
       route: {
-        outputs: { approval: role === "planner" ? "none" : "verify", role },
+        outputs: {
+          approval: role === "implementer" ? "verify" : "none",
+          role
+        },
         result: route
       }
     }
   });
 
 for (const route of ["failure", "cancelled", "skipped"]) {
-  for (const role of ["planner", "implementer"]) {
+  for (const role of ["planner", "implementer", "reviewer"]) {
     test(`${role} never starts after ${route} routing`, () => {
       assert.equal(eligible({ approval: "skipped", role, route }), false);
     });
@@ -100,13 +108,13 @@ test("routing reads the sender's real permission before deciding", () => {
   );
 });
 
-for (const role of ["plan", "implement"]) {
+for (const role of ["plan", "review", "implement"]) {
   test(`the ${role} job grants the GitHub tools agent mode installs on demand`, () => {
     assert.match(job(role), /--allowedTools\n\s+'mcp__github__\*'/);
   });
 }
 
-for (const role of ["plan", "implement"]) {
+for (const role of ["plan", "review", "implement"]) {
   test(`the ${role} job marks the thread before the model starts and after it ends`, () => {
     const steps = job(role);
     const started = steps.indexOf("content=eyes");
@@ -119,7 +127,7 @@ for (const role of ["plan", "implement"]) {
   });
 }
 
-for (const role of ["plan", "implement"]) {
+for (const role of ["plan", "review", "implement"]) {
   test(`the ${role} job installs the coding style as user memory`, () => {
     assert.match(
       job(role),
@@ -127,3 +135,42 @@ for (const role of ["plan", "implement"]) {
     );
   });
 }
+
+test("review can start without an approval job", () => {
+  assert.equal(
+    eligible({ approval: "skipped", role: "reviewer", route: "success" }),
+    true
+  );
+});
+
+test("a stale pass is retracted before the reviewer runs", () => {
+  const review = job("review");
+  const retract = review.indexOf("labels/reviewed");
+  const action = review.indexOf("uses: anthropics/claude-code-action@");
+
+  assert.ok(retract > 0, "The review job never retracts the reviewed label");
+  assert.ok(retract < action);
+  assert.match(review, /--method DELETE/);
+});
+
+test("the reviewer cannot write code or open a pull request", () => {
+  const review = job("review");
+
+  assert.match(review, /permission-contents: read/);
+  assert.match(review, /permission-issues: write/);
+  assert.doesNotMatch(review, /permission-contents: write/);
+  assert.doesNotMatch(review, /permission-pull-requests: write/);
+});
+
+test("routing knows the App's own login so the planner can ask for review", () => {
+  const route = job("route");
+
+  assert.match(
+    route,
+    /APP_LOGIN: \$\{\{ steps.app-token.outputs.app-slug \}\}\[bot]/
+  );
+  assert.doesNotMatch(
+    route.slice(0, route.indexOf("Read the sender's repository permission")),
+    /if: github.event.sender.type == 'User'/
+  );
+});

@@ -45,8 +45,9 @@ they differ:
   The owner's reply starts a new run that reconstructs context from the thread.
 - **Finish when no material decisions remain.** Publish the complete proposal
   and mark it `ready`; there is no minimum number of rounds or separate
-  confirmation interview. The owner's `approved` label is the authorization for
-  implementation, enforced by the workflow.
+  confirmation interview. `ready` sends the proposal to the reviewer, which
+  reads it against the code; the owner's `ready for dev` label is the
+  authorization for implementation, enforced by the workflow.
 
 Ask the owner only material decisions: things that change what gets built, where
 a wrong guess would be expensive, or that only the owner can settle. If you can
@@ -126,10 +127,14 @@ Rules for the proposal:
   what makes the proposal approvable, and applying it while a question is still
   open would misrepresent the proposal as settled. Remove `ready` if new
   material questions arise before approval.
-- **Never apply `approved`.** Approval is the owner's, and the workflow binds it
-  to a digest of the body you wrote. Editing the body after approval clears that
-  approval, so do not touch an approved issue unless the owner asked for
-  replanning.
+- **Answer the reviewer's findings.** A review that removes `ready` posts
+  numbered findings. Fix the proposal against them, say in a comment what you
+  changed, and apply `ready` again — that sends the revised plan back for
+  review.
+- **Never apply `reviewed` or `ready for dev`.** The first is the reviewer's and
+  the second is the owner's, and the workflow binds the owner's to a digest of
+  the body you wrote. Editing the body after approval clears that approval, so
+  do not touch an approved issue unless the owner asked for replanning.
 
 ## Boundaries
 
