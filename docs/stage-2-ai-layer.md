@@ -118,12 +118,12 @@ handoff to the default-branch caller, validate the current approved parent or
 prerequisite base, and include inherited parent context. The privileged caller
 must restrict PR-target events to the default branch.
 
-Parent/child plan reviews also receive the related open App PR snapshots and
-selected delivery implementation files from the pinned tooling commit. The
-reviewer does not need source-code dumps in issue comments. Referenced PR inputs
-are checked again before publication; changed or newly opened related PRs
-invalidate the in-flight review. All code is read as committed blobs, with no
-checkout or execution of that code.
+Parent/child plan reviews also receive the related open App PR snapshots and the
+agent runtime modules from the pinned tooling commit, excluding tests and
+fixtures. The reviewer does not need source-code dumps in issue comments.
+Referenced PR inputs are checked again before publication; changed or newly
+opened related PRs invalidate the in-flight review. All code is read as
+committed blobs, with no checkout or execution of that code.
 
 The complete prompt is limited to 512 KiB. Submodules fail visibly; binary
 contents are unavailable. Larger repos need scoped retrieval before enrollment.
@@ -276,3 +276,42 @@ privileged review continues to run from the default branch. One parent-family
 writer serializes branch mutations; the parent PR is excluded from child stacks.
 These changes still require the live parent and stack rollout tests before
 claiming deployment complete.
+
+### Parent integration rollout evidence
+
+The sandbox caller pins tooling `04317e095eb366a3babf196308129098dee65f35` after
+[sandbox PR #37](https://github.com/hogasi/ai-sandbox/pull/37). All 343 tooling
+tests and required CI checks passed. Live checks on September 10, 2026
+established:
+
+- [Parent #31](https://github.com/hogasi/ai-sandbox/issues/31) passed planning
+  review and authorization.
+  [Run 34526494746](https://github.com/hogasi/ai-sandbox/actions/runs/34526494746)
+  created `claude/issue-31` and children #34/#35, with #35 natively blocked by
+  #34. Captured parent and child bodies remain byte-identical.
+- Initial parent CI exposed missing router `contents: read` permission.
+  [Tooling PR #26](https://github.com/hogasi/.tooling/pull/26) fixed it;
+  [replay 34527544879](https://github.com/hogasi/ai-sandbox/actions/runs/34527544879)
+  passed routing and delivery tracking.
+- The migration plan for
+  [parent #25](https://github.com/hogasi/ai-sandbox/issues/25) passed
+  [review 34528074599](https://github.com/hogasi/ai-sandbox/actions/runs/34528074599)
+  using both existing child PR snapshots and the complete pinned runtime source.
+  The same checkpoint passed after the missing evidence was supplied; it did not
+  need another proposal revision.
+- [Authorization run 34528257887](https://github.com/hogasi/ai-sandbox/actions/runs/34528257887)
+  created `claude/issue-25`, reused children #26/#27 without changing their
+  bodies, and dispatched fresh inherited discovery. Existing PRs #28/#29 remain
+  unmerged pending that child authorization.
+- Child #35 passed review after automatic correction of its prerequisite
+  comparison. Claude runs for #34 and #26 subsequently failed before model usage
+  with `is_error: true` and no structured output. The action did not expose the
+  underlying error or retain a diagnostic artifact, so an account limit or
+  authentication cause is not confirmed. No partial plan was published.
+
+Still unverified live: child retargeting and integration into the parent, first
+integration opening the draft parent PR, combined parent CI/readiness/review,
+native stack repair and downstream refresh, and final parent merge closing its
+children. Resume child discovery after Claude execution recovers; each child
+still needs its own reviewed checkpoint and owner authorization. Do not merge
+the old main-targeting child PRs as a workaround.
