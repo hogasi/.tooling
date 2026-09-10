@@ -1,7 +1,7 @@
 # .tooling
 
-Shared config packages for the `hogasi` org. Every decision and its reasoning
-lives in [PLAN.md](PLAN.md) — this file is just how to use them.
+Shared config packages for the `hogasi` org. This file is how to use them;
+[docs/](docs/) holds the plan, the decisions and their reasoning.
 
 ## Setup
 
@@ -163,6 +163,27 @@ Two prerequisites or automerge silently does nothing useful: **Allow
 auto-merge** turned on, and **required status checks** — merging before any
 check is required merges without a gate.
 
+## AI development
+
+`.github/workflows/ai.yml` is a reusable workflow that runs the issue-to-merge
+loop: Fable does discovery and planning in the issue, the owner approves a
+proposal revision, and Opus implements it and opens a pull request. The role
+instructions live in [agents/](agents/) and ship with the workflow — a caller
+pinned to `@v1` gets the prompts from that same commit, not from `main`.
+
+```yaml
+jobs:
+  ai:
+    uses: hogasi/.tooling/.github/workflows/ai.yml@v1
+```
+
+It does nothing until the `AI_ROLES` variable names a role, and it needs a
+GitHub App, three secrets and two labels first. The caller to copy and the
+enrollment steps are in [docs/setup.md](docs/setup.md); the design and its open
+questions are in [docs/stage-2-ai-layer.md](docs/stage-2-ai-layer.md).
+
+> None of this has run against GitHub yet.
+
 ## Releasing
 
 ```sh
@@ -206,4 +227,4 @@ HUSKY=0 git commit    # skip the hook
 
 Set by hand in the GitHub UI, once; not tracked as files. Config-as-code nobody
 remembers to apply reads as applied when it isn't. Values and reasoning are in
-[PLAN.md](PLAN.md).
+[docs/setup.md](docs/setup.md).

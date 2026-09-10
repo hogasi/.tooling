@@ -5,7 +5,11 @@
 
   // Tests run under `node --test`, which fallow has no plugin for, so nothing
   // imports them and they look unreachable. Here they are the entry points.
-  "entry": ["packages/*/*.test.mjs", "renovate/*.test.mjs"],
+  "entry": [
+    "agents/*.test.mjs",
+    "packages/*/*.test.mjs",
+    "renovate/*.test.mjs"
+  ],
 
   // Deliberately broken fixtures the fallow-config tests build and delete.
   "ignorePatterns": ["packages/*/tmp-fixture-*/**"],
@@ -24,6 +28,18 @@
 
   "health": {
     "thresholdOverrides": [
+      {
+        "files": ["agents/approval.mjs"],
+        "functions": [
+          "latestApproval",
+          "readIssue",
+          "requireApprovalEvent",
+          "validateContext",
+          "verifyApproval"
+        ],
+        "maxCrap": 75,
+        "reason": "CRAP is estimated from exports, not measured: node:test exercises approval through applyApproval, but private helpers are scored as untested. Approval regression tests cover stale events, queue changes, permissions, pagination, revocation, and malformed API data. Keep cyclomatic and cognitive limits unchanged."
+      },
       {
         "files": ["packages/vitest-config/index.js"],
         "functions": ["thresholdsFor"],

@@ -3,3 +3,6 @@ node_modules
 .fallow
 packages/*/tmp-fixture-*/
 .husky/_/
+
+# Vendored upstream, kept byte-for-byte so it can be diffed against its commit.
+agents/skills/

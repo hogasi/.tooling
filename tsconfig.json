@@ -5,5 +5,10 @@
     "checkJs": false,
     "noEmit": true
   },
-  "include": ["packages/*/*.js", "packages/*/*.mjs", "renovate/*.mjs"]
+  "include": [
+    "agents/*.mjs",
+    "packages/*/*.js",
+    "packages/*/*.mjs",
+    "renovate/*.mjs"
+  ]
 }

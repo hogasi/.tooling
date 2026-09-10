@@ -1,0 +1,395 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  decide,
+  resolveEffort,
+  resolveEnabledRoles,
+  resolveModel,
+  resolveRoute,
+  settingsFor
+} from "./route.mjs";
+
+const ownerEvent = (overrides) => ({
+  action: "opened",
+  associationSubject: "silviuhogasi",
+  authorAssociation: "OWNER",
+  commentBody: "",
+  eventName: "issues",
+  isPullRequest: false,
+  labelName: "",
+  labels: [],
+  senderLogin: "silviuhogasi",
+  senderType: "User",
+  ...overrides
+});
+
+test("a new issue starts discovery", () => {
+  const route = resolveRoute(ownerEvent({}));
+
+  assert.equal(route.role, "planner");
+  assert.equal(route.approval, "none");
+});
+
+test("an owner comment during discovery continues planning", () => {
+  const route = resolveRoute(
+    ownerEvent({
+      action: "created",
+      commentBody: "Q1: yes",
+      eventName: "issue_comment"
+    })
+  );
+
+  assert.equal(route.role, "planner");
+});
+
+test("an ordinary comment on an approved issue starts nothing", () => {
+  const route = resolveRoute(
+    ownerEvent({
+      action: "created",
+      commentBody: "looks good",
+      eventName: "issue_comment",
+      labels: ["ready", "approved"]
+    })
+  );
+
+  assert.equal(route.role, "");
+});
+
+test("@claude replan clears the approval and returns to discovery", () => {
+  const route = resolveRoute(
+    ownerEvent({
+      action: "created",
+      commentBody: "@claude replan — the scope changed",
+      eventName: "issue_comment",
+      labels: ["ready", "approved"]
+    })
+  );
+
+  assert.equal(route.role, "planner");
+  assert.equal(route.approval, "clear");
+});
+
+test("approving a ready proposal records the approval and implements", () => {
+  const route = resolveRoute(
+    ownerEvent({
+      action: "labeled",
+      labelName: "approved",
+      labels: ["ready", "approved"]
+    })
+  );
+
+  assert.equal(route.role, "implementer");
+  assert.equal(route.approval, "record");
+});
+
+test("approving a proposal that is not ready fails loudly", () => {
+  assert.throws(
+    () =>
+      resolveRoute(
+        ownerEvent({
+          action: "labeled",
+          labelName: "approved",
+          labels: ["approved"]
+        })
+      ),
+    /ready/
+  );
+});
+
+test("any other label starts nothing", () => {
+  const route = resolveRoute(
+    ownerEvent({ action: "labeled", labelName: "bug", labels: ["bug"] })
+  );
+
+  assert.equal(route.role, "");
+});
+
+test("editing an approved proposal clears the approval without running a role", () => {
+  const route = resolveRoute(
+    ownerEvent({ action: "edited", labels: ["ready", "approved"] })
+  );
+
+  assert.equal(route.role, "");
+  assert.equal(route.approval, "clear");
+});
+
+test("editing an unapproved issue changes nothing", () => {
+  const route = resolveRoute(
+    ownerEvent({ action: "edited", labels: ["ready"] })
+  );
+
+  assert.equal(route.approval, "none");
+});
+
+test("@claude on the pull request starts a repair that reverifies approval", () => {
+  const route = resolveRoute(
+    ownerEvent({
+      action: "created",
+      commentBody: "@claude the build is red",
+      eventName: "issue_comment",
+      isPullRequest: true
+    })
+  );
+
+  assert.equal(route.role, "implementer");
+  assert.equal(route.approval, "verify");
+});
+
+test("a pull request comment without the trigger phrase starts nothing", () => {
+  const route = resolveRoute(
+    ownerEvent({
+      action: "created",
+      commentBody: "merging this tomorrow",
+      eventName: "issue_comment",
+      isPullRequest: true
+    })
+  );
+
+  assert.equal(route.role, "");
+});
+
+test("bots never invoke a role", () => {
+  const route = resolveRoute(
+    ownerEvent({
+      action: "created",
+      commentBody: "@claude fix the failures",
+      eventName: "issue_comment",
+      isPullRequest: true,
+      senderLogin: "codex[bot]",
+      senderType: "Bot"
+    })
+  );
+
+  assert.equal(route.role, "");
+  assert.match(route.reason, /not a human account/);
+});
+
+test("a bot account posting as a User still never invokes a role", () => {
+  // The App pushes and opens pull requests, so its own comments arrive as
+  // events. Only the login marks them, not the sender type.
+  const route = resolveRoute(
+    ownerEvent({ senderLogin: "hogasi-ai[bot]", senderType: "User" })
+  );
+
+  assert.equal(route.role, "");
+});
+
+test("a quoted mention does not start a repair", () => {
+  const route = resolveRoute(
+    ownerEvent({
+      action: "created",
+      commentBody: "> @claude the build is red\n\nIgnore that, it was flaky.",
+      eventName: "issue_comment",
+      isPullRequest: true
+    })
+  );
+
+  assert.equal(route.role, "");
+});
+
+test("a quoted replan request does not clear the approval", () => {
+  const route = resolveRoute(
+    ownerEvent({
+      action: "created",
+      commentBody: "> @claude replan\n\nI decided against that.",
+      eventName: "issue_comment",
+      labels: ["ready", "approved"]
+    })
+  );
+
+  assert.equal(route.approval, "none");
+});
+
+test("an edited pull request comment starts nothing", () => {
+  const route = resolveRoute(
+    ownerEvent({
+      action: "edited",
+      commentBody: "@claude fix the build",
+      eventName: "issue_comment",
+      isPullRequest: true
+    })
+  );
+
+  assert.equal(route.role, "");
+});
+
+test("an association describing someone other than the sender is not trusted", () => {
+  const route = resolveRoute(
+    ownerEvent({
+      action: "edited",
+      associationSubject: "a-stranger",
+      labels: ["ready", "approved"]
+    })
+  );
+
+  assert.equal(route.role, "");
+  assert.match(route.reason, /no author_association/);
+});
+
+test("an owner may approve an outside contributor's issue", () => {
+  // Only triage access or better can apply a label, and the approval job reads
+  // the labeller's real permission back. The issue opener's association says
+  // nothing about who labelled it.
+  const route = resolveRoute(
+    ownerEvent({
+      action: "labeled",
+      associationSubject: "a-stranger",
+      authorAssociation: "NONE",
+      labelName: "approved",
+      labels: ["ready", "approved"]
+    })
+  );
+
+  assert.equal(route.role, "implementer");
+  assert.equal(route.approval, "record");
+});
+
+test("a drive-by contributor never invokes a role", () => {
+  const route = resolveRoute(ownerEvent({ authorAssociation: "NONE" }));
+
+  assert.equal(route.role, "");
+  assert.match(route.reason, /no write relationship/);
+});
+
+test("an unrouted event type starts nothing", () => {
+  const route = resolveRoute(ownerEvent({ action: "closed" }));
+
+  assert.equal(route.role, "");
+});
+
+test("unset AI_ROLES disables every role", () => {
+  const decision = decide({ EVENT_ACTION: "opened", EVENT_NAME: "issues" });
+
+  assert.equal(decision.role, "");
+});
+
+test("AI_ROLES enrolls one role at a time", () => {
+  const environment = {
+    AI_ROLES: "planner",
+    EVENT_ACTION: "labeled",
+    EVENT_ASSOCIATION_SUBJECT: "silviuhogasi",
+    EVENT_AUTHOR_ASSOCIATION: "OWNER",
+    EVENT_LABEL: "approved",
+    EVENT_LABELS: '["ready","approved"]',
+    EVENT_NAME: "issues",
+    EVENT_SENDER: "silviuhogasi",
+    EVENT_SENDER_TYPE: "User"
+  };
+
+  assert.equal(decide(environment).role, "");
+  assert.equal(
+    decide({ ...environment, AI_ROLES: "planner,implementer" }).role,
+    "implementer"
+  );
+});
+
+test("an approval-clearing edit is gated on the implementer being enabled", () => {
+  const environment = {
+    EVENT_ACTION: "edited",
+    EVENT_ASSOCIATION_SUBJECT: "silviuhogasi",
+    EVENT_AUTHOR_ASSOCIATION: "OWNER",
+    EVENT_LABELS: '["ready","approved"]',
+    EVENT_NAME: "issues",
+    EVENT_SENDER: "silviuhogasi",
+    EVENT_SENDER_TYPE: "User"
+  };
+
+  assert.equal(
+    decide({ ...environment, AI_ROLES: "planner" }).approval,
+    "none"
+  );
+  assert.equal(
+    decide({ ...environment, AI_ROLES: "planner,implementer" }).approval,
+    "clear"
+  );
+});
+
+test("roles are read as a trimmed comma list", () => {
+  assert.deepEqual(
+    [...resolveEnabledRoles(" planner , implementer ,")],
+    ["planner", "implementer"]
+  );
+});
+
+test("a variable holding only separators enables nothing", () => {
+  assert.equal(resolveEnabledRoles(" , , ").size, 0);
+});
+
+test("the workflow default is used when no variable overrides it", () => {
+  assert.equal(resolveModel({ fallback: "fable", override: "" }), "fable");
+  assert.equal(
+    resolveEffort({ fallback: "high", override: undefined }),
+    "high"
+  );
+});
+
+test("an override selects an alias or an explicit model id", () => {
+  assert.equal(resolveModel({ fallback: "fable", override: "opus" }), "opus");
+  assert.equal(
+    resolveModel({ fallback: "fable", override: "claude-fable-5" }),
+    "claude-fable-5"
+  );
+  assert.equal(
+    resolveModel({ fallback: "opus", override: "claude-opus-5[1m]" }),
+    "claude-opus-5[1m]"
+  );
+});
+
+test("an unrecognised model fails rather than reaching the command line", () => {
+  assert.throws(
+    () => resolveModel({ fallback: "fable", override: "gpt-6" }),
+    /Unsupported Claude model/
+  );
+  assert.throws(
+    () => resolveModel({ fallback: "fable", override: "opus; rm -rf /" }),
+    /Unsupported Claude model/
+  );
+});
+
+test("an unrecognised effort fails rather than reaching the command line", () => {
+  assert.throws(
+    () => resolveEffort({ fallback: "high", override: "maximum" }),
+    /Unsupported Claude effort/
+  );
+});
+
+test("ultracode is not an accepted effort for an unattended run", () => {
+  assert.throws(
+    () => resolveEffort({ fallback: "high", override: "ultracode" }),
+    /Unsupported Claude effort/
+  );
+});
+
+test("each role falls back to the workflow default for its own model", () => {
+  const defaults = {
+    AI_DEFAULT_EFFORT: "high",
+    AI_DEFAULT_IMPLEMENTER_MODEL: "opus",
+    AI_DEFAULT_PLANNER_MODEL: "fable"
+  };
+
+  assert.deepEqual(settingsFor("planner", defaults), {
+    effort: "high",
+    model: "fable"
+  });
+  assert.deepEqual(settingsFor("implementer", defaults), {
+    effort: "high",
+    model: "opus"
+  });
+});
+
+test("a repository variable overrides only its own role", () => {
+  const settings = settingsFor("planner", {
+    AI_DEFAULT_EFFORT: "high",
+    AI_DEFAULT_PLANNER_MODEL: "fable",
+    AI_IMPLEMENTER_MODEL: "sonnet",
+    AI_PLANNER_EFFORT: "max",
+    AI_PLANNER_MODEL: "claude-fable-5"
+  });
+
+  assert.deepEqual(settings, { effort: "max", model: "claude-fable-5" });
+});
+
+test("no role means no model to resolve", () => {
+  assert.deepEqual(settingsFor("", {}), { effort: "", model: "" });
+});

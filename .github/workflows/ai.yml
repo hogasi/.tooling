@@ -1,0 +1,350 @@
+name: AI
+
+# Reusable workflow. An enrolled repository calls it from a thin caller that
+# forwards the three secrets and declares the read permissions below; the
+# caller in docs/setup.md is the copy to start from.
+#
+# Roles are off until `AI_ROLES` names them, so adding the caller to a
+# repository changes nothing on its own.
+
+on:
+  workflow_call:
+    secrets:
+      AI_APP_ID:
+        description: Client ID of the org-owned GitHub App that performs writes
+        required: true
+      AI_APP_PRIVATE_KEY:
+        description: Private key of that App
+        required: true
+      CLAUDE_CODE_OAUTH_TOKEN:
+        description: Claude subscription token from `claude setup-token`
+        required: true
+
+permissions: {}
+
+jobs:
+  route:
+    name: Route
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      approval: ${{ steps.decide.outputs.approval }}
+      effort: ${{ steps.decide.outputs.effort }}
+      issue: ${{ steps.work-key.outputs.issue }}
+      model: ${{ steps.decide.outputs.model }}
+      role: ${{ steps.decide.outputs.role }}
+    steps:
+      # `job.workflow_sha` is the commit of *this* file, so the prompts and the
+      # vendored skill come from the same release as the workflow that runs
+      # them. Checking out `main` or the moving `v1` here would let a consumer
+      # pinned to one version silently pick up another version's behaviour.
+      - uses: actions/checkout@v7
+        with:
+          path: _tooling
+          ref: ${{ job.workflow_sha }}
+          repository: ${{ job.workflow_repository }}
+
+      - name: Decide what this event starts
+        id: decide
+        env:
+          AI_DEFAULT_EFFORT: high
+          AI_DEFAULT_IMPLEMENTER_MODEL: opus
+          AI_DEFAULT_PLANNER_MODEL: fable
+          AI_IMPLEMENTER_EFFORT: ${{ vars.AI_IMPLEMENTER_EFFORT }}
+          AI_IMPLEMENTER_MODEL: ${{ vars.AI_IMPLEMENTER_MODEL }}
+          AI_PLANNER_EFFORT: ${{ vars.AI_PLANNER_EFFORT }}
+          AI_PLANNER_MODEL: ${{ vars.AI_PLANNER_MODEL }}
+          AI_ROLES: ${{ vars.AI_ROLES }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_ASSOCIATION_SUBJECT:
+            ${{ github.event.comment.user.login || github.event.issue.user.login
+            }}
+          EVENT_AUTHOR_ASSOCIATION:
+            ${{ github.event.comment.author_association ||
+            github.event.issue.author_association }}
+          EVENT_COMMENT_BODY: ${{ github.event.comment.body }}
+          EVENT_IS_PULL_REQUEST: ${{ github.event.issue.pull_request != null }}
+          EVENT_LABEL: ${{ github.event.label.name }}
+          EVENT_LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SENDER: ${{ github.event.sender.login }}
+          EVENT_SENDER_TYPE: ${{ github.event.sender.type }}
+        run: node _tooling/agents/route.mjs
+
+      # Issues and pull requests share one number sequence, so an issue and the
+      # pull request that closes it never collide — but they are also never the
+      # same number. Serialising writes needs the issue number in both cases,
+      # which for a pull request means reading it back off the branch name.
+      - name: Resolve the work key
+        id: work-key
+        if: steps.decide.outputs.role != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IS_PULL_REQUEST: ${{ github.event.issue.pull_request != null }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          issue="$NUMBER"
+          if [ "$IS_PULL_REQUEST" = "true" ]; then
+            branch=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${NUMBER}" --jq '.head.ref')
+            issue="${branch#claude/issue-}"
+            if [ "$issue" = "$branch" ]; then
+              echo "::error::Pull request #${NUMBER} is on '${branch}', not a claude/issue-<n> branch, so it has no approved proposal to work from."
+              exit 1
+            fi
+          fi
+          case "$issue" in
+            ''|*[!0-9]*)
+              echo "::error::Resolved a work key that is not an issue number: '${issue}'."
+              exit 1
+              ;;
+          esac
+          echo "issue=${issue}" >> "$GITHUB_OUTPUT"
+
+      - name: Record the decision
+        env:
+          APPROVAL: ${{ steps.decide.outputs.approval }}
+          EFFORT: ${{ steps.decide.outputs.effort }}
+          ISSUE: ${{ steps.work-key.outputs.issue }}
+          MODEL: ${{ steps.decide.outputs.model }}
+          REASON: ${{ steps.decide.outputs.reason }}
+          ROLE: ${{ steps.decide.outputs.role }}
+        run: |
+          {
+            printf '### AI routing\n\n'
+            printf -- "- Role: \`%s\`\n" "${ROLE:-none}"
+            printf -- "- Reason: %s\n" "$REASON"
+            printf -- "- Approval: \`%s\`\n" "$APPROVAL"
+            printf -- "- Issue: #%s\n" "${ISSUE:-none}"
+            printf -- "- Model: \`%s\` at \`%s\` effort\n" "${MODEL:-none}" "${EFFORT:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Approval is a job, not a paragraph in a prompt. It binds the owner's
+  # approval to a digest of the exact proposal revision they approved, and
+  # rechecks that digest before each implementation run, after queueing.
+  approval:
+    name: Approval
+    needs: route
+    if:
+      needs.route.result == 'success' && needs.route.outputs.approval != 'none'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      digest: ${{ steps.check.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: _tooling
+          ref: ${{ job.workflow_sha }}
+          repository: ${{ job.workflow_repository }}
+
+      - uses: actions/create-github-app-token@v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ secrets.AI_APP_ID }}
+          # Administration read is only for reading back the requesting actor's
+          # repository permission; the collaborator endpoint needs it.
+          permission-administration: read
+          permission-issues: write
+          permission-metadata: read
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+
+      - name: Bind, recheck or clear the approval
+        id: check
+        env:
+          ACTOR: ${{ github.actor }}
+          # Only a comment the App itself posted counts as a record. Anyone with
+          # write access can type the marker and a digest they computed
+          # themselves, and a text-only match would accept it as an approval.
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE: ${{ needs.route.outputs.issue || github.event.issue.number }}
+          MODE: ${{ needs.route.outputs.approval }}
+        run: node _tooling/agents/approval.mjs
+
+  plan:
+    name: Plan
+    needs: [route, approval]
+    if:
+      always() && needs.route.result == 'success' && needs.route.outputs.role ==
+      'planner' && (needs.approval.result == 'success' ||
+      (needs.route.outputs.approval == 'none' && needs.approval.result ==
+      'skipped'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Superseded discovery is worth cancelling: the newer comment contains the
+    # answers the older run was about to ask for again.
+    concurrency:
+      group: ai-plan-${{ github.repository }}-${{ needs.route.outputs.issue }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: _tooling
+          ref: ${{ job.workflow_sha }}
+          repository: ${{ job.workflow_repository }}
+
+      # Out of the workspace before the consumer is checked out over it, and so
+      # that nothing the planner writes can land in the repository's own tree.
+      - name: Stage the tooling files
+        run: mv "${GITHUB_WORKSPACE}/_tooling" "${RUNNER_TEMP}/tooling"
+
+      - uses: actions/checkout@v7
+
+      # Storing the skill under agents/skills does not install it. Claude Code
+      # discovers personal skills here, and agents/planner.md loads it by name.
+      - name: Install the discovery skill
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.claude/skills"
+          cp -R "${RUNNER_TEMP}/tooling/agents/skills/grilling" "${HOME}/.claude/skills/grilling"
+
+      # No contents write and no pull request access: the planner cannot start
+      # implementing even if it decides to. That is a credential, not a rule in
+      # a prompt.
+      - uses: actions/create-github-app-token@v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ secrets.AI_APP_ID }}
+          permission-contents: read
+          permission-issues: write
+          permission-metadata: read
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+
+      - name: Build the planner prompt
+        id: prompt
+        env:
+          EFFORT: ${{ needs.route.outputs.effort }}
+          ISSUE: ${{ needs.route.outputs.issue }}
+          MODEL: ${{ needs.route.outputs.model }}
+        run: |
+          set -euo pipefail
+          delimiter="PROMPT_$(openssl rand -hex 16)"
+          {
+            printf 'text<<%s\n' "$delimiter"
+            cat "${RUNNER_TEMP}/tooling/agents/planner.md"
+            printf '\n## This run\n\n- Repository: %s\n- Issue: #%s\n- Model: %s at %s effort\n' \
+              "$GITHUB_REPOSITORY" "$ISSUE" "$MODEL" "$EFFORT"
+            printf '%s\n' "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: anthropics/claude-code-action@v1.0.219
+        with:
+          claude_args:
+            --model ${{ needs.route.outputs.model }} --effort ${{
+            needs.route.outputs.effort }} --max-turns 60
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
+          prompt: ${{ steps.prompt.outputs.text }}
+
+  implement:
+    name: Implement
+    needs: [route, approval]
+    # A custom `if:` replaces the implicit success() gate on `needs`, so the
+    # approval result has to be named here or a failed recheck would not stop
+    # the one job that writes code.
+    if:
+      always() && needs.route.result == 'success' && needs.route.outputs.role ==
+      'implementer' && needs.approval.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # Never cancelled. A writer that loses its runner mid-push leaves a branch
+    # nobody can reason about, and its own push or a review arriving is not a
+    # reason to stop it.
+    concurrency:
+      group: ai-write-${{ github.repository }}-${{ needs.route.outputs.issue }}
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: _tooling
+          ref: ${{ job.workflow_sha }}
+          repository: ${{ job.workflow_repository }}
+
+      - name: Stage the tooling files
+        run: mv "${GITHUB_WORKSPACE}/_tooling" "${RUNNER_TEMP}/tooling"
+
+      # Full history: the implementer resumes an existing claude/issue-<n>
+      # branch on a repair rather than starting a second one.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Build the implementer prompt
+        id: prompt
+        env:
+          EFFORT: ${{ needs.route.outputs.effort }}
+          ISSUE: ${{ needs.route.outputs.issue }}
+          MODEL: ${{ needs.route.outputs.model }}
+        run: |
+          set -euo pipefail
+          delimiter="PROMPT_$(openssl rand -hex 16)"
+          {
+            printf 'text<<%s\n' "$delimiter"
+            cat "${RUNNER_TEMP}/tooling/agents/implementer.md"
+            printf '\n## This run\n\n- Repository: %s\n- Issue: #%s\n- Branch: claude/issue-%s\n- Model: %s at %s effort\n' \
+              "$GITHUB_REPOSITORY" "$ISSUE" "$ISSUE" "$MODEL" "$EFFORT"
+            printf '%s\n' "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/create-github-app-token@v3.2.0
+        id: approval-token
+        with:
+          client-id: ${{ secrets.AI_APP_ID }}
+          permission-administration: read
+          permission-issues: read
+          permission-metadata: read
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+
+      # silviu: this closes the queue gap, but cannot revoke credentials during
+      # execution. Add a per-push gate if mid-run revocation must stop writes.
+      - name: Recheck the queued proposal before granting write access
+        env:
+          ACTOR: ${{ github.actor }}
+          APP_LOGIN: ${{ steps.approval-token.outputs.app-slug }}[bot]
+          EXPECTED_DIGEST: ${{ needs.approval.outputs.digest }}
+          GH_TOKEN: ${{ steps.approval-token.outputs.token }}
+          ISSUE: ${{ needs.route.outputs.issue }}
+          MODE: verify
+        run: node "${RUNNER_TEMP}/tooling/agents/approval.mjs"
+
+      # `permission-actions: read` is what lets a repair read its own failing
+      # check logs instead of asking the owner to paste them.
+      - uses: actions/create-github-app-token@v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ secrets.AI_APP_ID }}
+          permission-actions: read
+          permission-contents: write
+          permission-issues: write
+          permission-metadata: read
+          permission-pull-requests: write
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+
+      - uses: anthropics/claude-code-action@v1.0.219
+        with:
+          # Without a fixed name every rerun opens a second branch and a second
+          # pull request. `claude/issue-<n>` is also what the router reads the
+          # work key back off when a repair arrives on the pull request.
+          branch_name_template: "{{prefix}}{{entityType}}-{{entityNumber}}"
+          claude_args:
+            --model ${{ needs.route.outputs.model }} --effort ${{
+            needs.route.outputs.effort }} --max-turns 200
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
+          prompt: ${{ steps.prompt.outputs.text }}
