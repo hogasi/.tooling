@@ -242,6 +242,17 @@ jobs:
           mkdir -p "${HOME}/.claude/skills"
           cp -R "${RUNNER_TEMP}/tooling/agents/skills/grilling" "${HOME}/.claude/skills/grilling"
 
+      # Vendored from silviuhogasi/.ai at commit
+      # 6b5066167dc699d3392e1a87dcc110190538ad80
+      # (general/coding-style/AGENTS.md). Claude Code reads this as user memory,
+      # which is how one persona reaches every enrolled repository without being
+      # pasted into a prompt. A vendored copy drifts until someone re-pins it.
+      - name: Install the coding style
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.claude"
+          cp "${RUNNER_TEMP}/tooling/agents/vendor/coding-style.md" "${HOME}/.claude/CLAUDE.md"
+
       # No contents write and no pull request access: the planner cannot start
       # implementing even if it decides to. That is a credential, not a rule in
       # a prompt.
@@ -266,6 +277,8 @@ jobs:
           {
             printf 'text<<%s\n' "$delimiter"
             cat "${RUNNER_TEMP}/tooling/agents/planner.md"
+            printf '\n'
+            cat "${RUNNER_TEMP}/tooling/agents/voice.md"
             printf '\n## This run\n\n- Repository: %s\n- Issue: #%s\n- Model: %s at %s effort\n' \
               "$GITHUB_REPOSITORY" "$ISSUE" "$MODEL" "$EFFORT"
             printf '%s\n' "$delimiter"
@@ -275,6 +288,23 @@ jobs:
       # GitHub MCP server only for the tools named here. Without them the
       # planner reads the repository and is then denied every attempt to say
       # what it found — a run that costs a model call and posts nothing.
+      # A run takes minutes and posts nothing until it ends. The reaction is the
+      # only sign the owner gets that the thing they wrote was picked up, so it
+      # goes on before the model starts and is replaced by the outcome after.
+      - name: React to show the run started
+        id: reaction
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TARGET:
+            ${{ github.event.comment.id && format('issues/comments/{0}',
+            github.event.comment.id) || format('issues/{0}',
+            github.event.issue.number) }}
+        run: |
+          set -euo pipefail
+          id=$(gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions" --method POST -f content=eyes --jq '.id')
+          echo "id=${id}" >> "$GITHUB_OUTPUT"
+          echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
+
       - uses: anthropics/claude-code-action@v1.0.219
         with:
           claude_args:
@@ -284,6 +314,23 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app-token.outputs.token }}
           prompt: ${{ steps.prompt.outputs.text }}
+
+      - name: Replace the reaction with the outcome
+        if: always() && steps.reaction.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OUTCOME: ${{ job.status }}
+          REACTION: ${{ steps.reaction.outputs.id }}
+          TARGET: ${{ steps.reaction.outputs.target }}
+        run: |
+          set -euo pipefail
+          if [ "$OUTCOME" = "success" ]; then
+            content=rocket
+          else
+            content=confused
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions/${REACTION}" --method DELETE
+          gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions" --method POST -f "content=${content}"
 
   implement:
     name: Implement
@@ -323,6 +370,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Vendored from silviuhogasi/.ai at commit
+      # 6b5066167dc699d3392e1a87dcc110190538ad80
+      # (general/coding-style/AGENTS.md). Claude Code reads this as user memory,
+      # which is how one persona reaches every enrolled repository without being
+      # pasted into a prompt. A vendored copy drifts until someone re-pins it.
+      - name: Install the coding style
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.claude"
+          cp "${RUNNER_TEMP}/tooling/agents/vendor/coding-style.md" "${HOME}/.claude/CLAUDE.md"
+
       - name: Build the implementer prompt
         id: prompt
         env:
@@ -335,6 +393,8 @@ jobs:
           {
             printf 'text<<%s\n' "$delimiter"
             cat "${RUNNER_TEMP}/tooling/agents/implementer.md"
+            printf '\n'
+            cat "${RUNNER_TEMP}/tooling/agents/voice.md"
             printf '\n## This run\n\n- Repository: %s\n- Issue: #%s\n- Branch: claude/issue-%s\n- Model: %s at %s effort\n' \
               "$GITHUB_REPOSITORY" "$ISSUE" "$ISSUE" "$MODEL" "$EFFORT"
             printf '%s\n' "$delimiter"
@@ -374,6 +434,23 @@ jobs:
           permission-pull-requests: write
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
 
+      # A run takes minutes and posts nothing until it ends. The reaction is the
+      # only sign the owner gets that the thing they wrote was picked up, so it
+      # goes on before the model starts and is replaced by the outcome after.
+      - name: React to show the run started
+        id: reaction
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TARGET:
+            ${{ github.event.comment.id && format('issues/comments/{0}',
+            github.event.comment.id) || format('issues/{0}',
+            github.event.issue.number) }}
+        run: |
+          set -euo pipefail
+          id=$(gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions" --method POST -f content=eyes --jq '.id')
+          echo "id=${id}" >> "$GITHUB_OUTPUT"
+          echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
+
       - uses: anthropics/claude-code-action@v1.0.219
         with:
           # Without a fixed name every rerun opens a second branch and a second
@@ -390,3 +467,20 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app-token.outputs.token }}
           prompt: ${{ steps.prompt.outputs.text }}
+
+      - name: Replace the reaction with the outcome
+        if: always() && steps.reaction.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OUTCOME: ${{ job.status }}
+          REACTION: ${{ steps.reaction.outputs.id }}
+          TARGET: ${{ steps.reaction.outputs.target }}
+        run: |
+          set -euo pipefail
+          if [ "$OUTCOME" = "success" ]; then
+            content=rocket
+          else
+            content=confused
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions/${REACTION}" --method DELETE
+          gh api "repos/${GITHUB_REPOSITORY}/${TARGET}/reactions" --method POST -f "content=${content}"
