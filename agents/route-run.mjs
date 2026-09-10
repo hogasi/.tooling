@@ -1,6 +1,8 @@
 import { appendFileSync } from "node:fs";
 
 import { resolveCorrection } from "./automation.mjs";
+import { parentProgressRoute } from "./delivery-progress.mjs";
+import { resolveChildDiscovery } from "./delivery.mjs";
 import { resolveCiWorkflow } from "./repair-evidence.mjs";
 import { resolveRepair } from "./repair.mjs";
 import { decide, resolveEnabledRoles, settingsFor } from "./route.mjs";
@@ -9,7 +11,11 @@ function correctionDecision(environment) {
   if (!resolveEnabledRoles(environment.AI_ROLES).has("planner")) {
     return { approval: "none", reason: "planner is not in AI_ROLES", role: "" };
   }
-  return resolveCorrection({
+  const resolve =
+    environment.HANDOFF_PHASE === "child-planner"
+      ? resolveChildDiscovery
+      : resolveCorrection;
+  return resolve({
     appLogin: environment.APP_LOGIN,
     issueNumber: environment.HANDOFF_ISSUE,
     phase: environment.HANDOFF_PHASE,
@@ -59,6 +65,19 @@ function repairDecision(environment) {
 }
 
 function routeEvent(environment) {
+  if (
+    environment.EVENT_NAME === "pull_request_target" &&
+    environment.EVENT_ACTION === "closed" &&
+    resolveEnabledRoles(environment.AI_ROLES).has("implementer")
+  ) {
+    const pull = JSON.parse(environment.EVENT_PULL_REQUEST);
+    return parentProgressRoute({
+      appLogin: environment.APP_LOGIN,
+      defaultBranch: environment.EVENT_DEFAULT_BRANCH,
+      pullRequestNumber: String(pull.number),
+      repository: environment.GITHUB_REPOSITORY
+    });
+  }
   if (
     environment.EVENT_NAME === "workflow_run" ||
     (environment.EVENT_NAME === "repository_dispatch" &&

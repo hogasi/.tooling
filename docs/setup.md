@@ -114,7 +114,7 @@ evidence is recorded below; other repositories need their own enrollment.
        issue_comment:
          types: [created]
        pull_request_target:
-         types: [opened, ready_for_review, synchronize]
+         types: [opened, ready_for_review, synchronize, closed]
        repository_dispatch:
          types: [ai-correction]
        workflow_run:
@@ -270,8 +270,8 @@ consumer at a time; do not mix legacy approval with the checkpoint format.
 
 Reviews still reject stale code snapshots before publication. Owner approval
 binds to the checkpoint, not every main commit. Legacy body-based approvals are
-rejected. Automatic corrections and stacks follow in later deliveries; see
-[stage 2](stage-2-ai-layer.md).
+rejected. Automatic corrections are available; child delivery and stacks are
+tracked in [stage 2](stage-2-ai-layer.md).
 
 The following evidence predates v2 migration and proves the earlier workflow. On
 September 10, 2026,
@@ -409,3 +409,26 @@ approval and repair-claim validation. This prevents checkout's read-only
 Node from `.nvmrc` when present (24.19.0 otherwise) and installs the declared
 pnpm version when the repository has `pnpm-lock.yaml`. These setup steps are
 skipped when duplicate evidence or verified completion requires no model call.
+
+## Child delivery enrollment
+
+Keep the existing builder App grants. Add `closed` to the caller's
+`pull_request_target.types` so merged child PRs refresh parent progress. No new
+role, secret, environment or specialist model is required.
+
+Fable can propose independently testable deliverables with native issue
+dependencies. After the parent review passes, apply `ready for dev` to authorize
+child creation. Each child starts discovery automatically in the parent context;
+review and apply its own `ready for dev` before code work. Parent authorization
+never authorizes all child implementations at once.
+
+Until stacked delivery is enabled, prerequisites must have an App PR merged into
+the default branch before dependent implementation starts. Closing an issue is
+insufficient. If authorization was attempted too early, wait for the
+prerequisite merge, then remove and reapply the child's `ready for dev` label.
+
+Keep the parent open until its overall acceptance criteria are verified. Its
+maintained delivery summary shows verified child merges, without automatically
+closing the parent or creating an umbrella PR. Changing the parent checkpoint
+invalidates inherited scope: replan and review affected children before
+resuming.

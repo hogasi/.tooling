@@ -9,6 +9,7 @@
     "agents/*.test.mjs",
     "agents/review-run.mjs",
     "agents/planning-run.mjs",
+    "agents/delivery-run.mjs",
     "agents/repair-run.mjs",
     "agents/route-run.mjs",
     "packages/*/*.test.mjs",
@@ -32,6 +33,33 @@
 
   "health": {
     "thresholdOverrides": [
+      {
+        "files": [
+          "agents/delivery.mjs",
+          "agents/delivery-scope.mjs",
+          "agents/delivery-plan.mjs",
+          "agents/delivery-progress.mjs",
+          "agents/delivery-evidence.mjs",
+          "agents/delivery.test.mjs"
+        ],
+        "functions": [
+          "mergedChildIssue",
+          "read",
+          "write",
+          "requireParent",
+          "<arrow>",
+          "validateChild",
+          "resolveChildDiscovery",
+          "requireDependencies",
+          "validateDependencies",
+          "readChild",
+          "validateRecord",
+          "ensureChild",
+          "linkChildren"
+        ],
+        "maxCrap": 73,
+        "reason": "Estimated CRAP does not measure node:test coverage. Delivery tests exercise immutable inherited scope, native dependency changes, source authentication, partial retries, duplicate and abandoned children, prerequisite merge evidence and partial parent progress. Other complexity limits remain unchanged."
+      },
       {
         "files": [
           "agents/repair.mjs",

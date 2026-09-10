@@ -20,11 +20,12 @@ Workflow v2 is being delivered in three increments:
    Consumer migration is documented in [setup](setup.md#workflow-v2-migration).
 2. **Automatic correction:** authenticated plan findings return to Fable with a
    persisted three-attempt limit and trusted structured-output publication.
-   CI/PR repair handoffs and early draft instructions are implemented in this
-   increment; consumer rollout and live repair validation remain pending.
-3. **Child delivery and stacks:** approved, not implemented. Parent issues hold
-   shared goals; children have their own reviewed deliverable and authorization.
-   Independent PRs target main; dependent PRs use same-repository stacks.
+   CI/PR repair and early draft publication are implemented and live-tested;
+   duplicate competing repairs were suppressed and the repair budget reset.
+3. **Child delivery:** native links, inherited scope and separate authorization
+   are implemented; live validation is pending. Parent issues hold shared goals;
+   children have their own reviewed deliverable and authorization. Independent
+   PRs target main. Native stacked PR delivery remains pending.
 
 Do not enable future handoffs by simply allowing arbitrary bots. Trusted code
 must authenticate the source, re-read current state and claim each attempt.
@@ -214,3 +215,43 @@ message relayed either finding. API assertions confirmed the original body
 unchanged, three unedited checkpoints, one planning summary, one reviewer
 summary, one persisted counter at 2/3 and final `approved` status. Development
 remained unauthorized throughout this test.
+
+## Automatic repair evidence
+
+Sandbox PR #14 received a deliberate `farewell` regression at
+`0c277e0a903bccafb48cbbe7c0679c2a3271ed54`. CI run 34507052256 failed and Astra
+run 34507051648 requested changes. Opus run 34507099298 repaired only the source
+line at `be01eed158f0803300277263db8c437b76d26a93`; CI 34507419137 and Astra
+34507413117 passed. Competing review dispatch 34507207654 skipped its Claude
+step after acquiring the writer; completion run 34507556173 reset the budget to
+0/3 without a model call.
+
+Sandbox PR #22 was observed as a draft while implementation run 34507084538 was
+active. It was created at 17:19:05Z and marked ready at 17:20:04Z on September
+10, 2026. CI 34507470641 and Astra 34507572530 passed. Tooling PR #20
+subsequently aligned the builder runtime with `.nvmrc` (Node 24.19.0 fallback)
+and authenticated git checkout using the scoped App token; sandbox PR #23
+enrolled that fix.
+
+## Child delivery implementation
+
+`agents/planner.schema.json` defines structured deliverables. Their readable
+scope and dependency metadata are included in the immutable proposal by
+`agents/delivery-plan.mjs`. After parent owner authorization,
+`agents/delivery.mjs` creates or reuses native sub-issues and issue
+dependencies, then dispatches child discovery. Partial retries reconnect
+existing children instead of duplicating them. The parent path invokes no
+implementation model.
+
+`agents/delivery-scope.mjs` verifies inherited checkpoint identity, exact child
+scope, parent authorization and native links during planning and approval.
+`agents/delivery-evidence.mjs` gates dependent implementation on verified
+default branch merges. `agents/delivery-progress.mjs` maintains one parent
+summary after child PR merges. Original issue bodies and previous checkpoints
+remain intact.
+
+Native endpoints are documented by GitHub for
+[sub-issues](https://docs.github.com/en/rest/issues/sub-issues) and
+[issue dependencies](https://docs.github.com/en/rest/issues/issue-dependencies).
+Child implementations still need their own reviewed proposals and owner labels.
+Native stacked PR support is the next delivery, not enabled by this increment.

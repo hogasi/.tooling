@@ -1,5 +1,11 @@
 const skipReview = (reason) => ({ approval: "none", reason, role: "" });
 
+export function hasSameRepository(pullRequest, repository) {
+  return (
+    pullRequest.head?.repo?.full_name === repository &&
+    pullRequest.base?.repo?.full_name === repository
+  );
+}
 /**
 Return the linked issue only for an open, non-draft implementation PR in this repository.
 */
@@ -40,12 +46,6 @@ export function routePullRequest(event) {
         role: "pr-reviewer"
       }
     : skipReview("not an eligible implementation PR");
-}
-function hasSameRepository(pullRequest, repository) {
-  return (
-    pullRequest.head?.repo?.full_name === repository &&
-    pullRequest.base?.repo?.full_name === repository
-  );
 }
 
 function isImplementationPull(pullRequest, appLogin) {

@@ -1,3 +1,5 @@
+import { appendDeliveryPlan } from "./delivery-plan.mjs";
+import { verifyInheritance } from "./delivery-scope.mjs";
 import { githubRequest } from "./github.mjs";
 import { latestComment, readComments, readProposal } from "./proposal.mjs";
 import { setStatus } from "./state.mjs";
@@ -19,6 +21,7 @@ export function capturePlanning(context, callGitHub = githubRequest) {
       "Planning requires an open issue without development authorization"
     );
   }
+  verifyInheritance(context, issue, callGitHub);
   const comments = readComments(context, callGitHub);
   const proposal = latestComment({
     comments,
@@ -57,7 +60,7 @@ export function publishPlanning(context, callGitHub = githubRequest) {
 }
 
 function publishCheckpoint(context, { latest, result }, callGitHub) {
-  const body = `${PROPOSAL}${result.proposal}`;
+  const body = `${PROPOSAL}${appendDeliveryPlan(result.proposal, result.deliverables)}`;
   if (latest?.body === body && latest.created_at === latest.updated_at) {
     return latest;
   }
