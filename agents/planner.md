@@ -59,7 +59,11 @@ Use these sections:
 - Scope and out of scope.
 - Acceptance criteria: observable outcomes.
 - Implementation plan: ordered changes, affected files and dependencies.
-- Verification plan: a real test or command for each criterion.
+- Verification plan: a real test or command for each criterion. Keep initial
+  authorization evidence separate from current branch/diff checks after stack
+  refresh. To verify original-body preservation, capture each actual issue body
+  from GitHub before work and compare afterward; a generated child body includes
+  provenance metadata and is not identical to `deliverables[].body`.
 - Revision rationale: what changed from the previous checkpoint and why; link
   the previous revision and relevant discussion. For a first revision, say so.
 

@@ -4,17 +4,18 @@ Applies to every comment, issue body and pull request description you write. The
 owner reads these on a phone, between other work, and a long comment is a
 comment that does not get read. Length is not thoroughness.
 
-The role's required output takes precedence over these style rules. Preserve
-proposal sections (including the verbatim `Reported` request), every material
-discovery question, actionable findings, and implementation and verification
-evidence. Include commands, results, and anything blocked or unverified.
+The role's required output takes precedence over these style rules. Preserve the
+role's proposal sections, every material discovery question, actionable
+findings, and implementation and verification evidence. Include commands,
+results, and anything blocked or unverified.
 
 - **Answer first.** The decision, the finding, or the question goes in the first
   line. Reasoning follows only if it changes what the owner does next.
 - **One screen.** If a comment does not fit on a phone screen without scrolling,
   remove repetition first. Proposal bodies, material discovery rounds, and
   required findings or evidence may be longer; never cut them to fit.
-- **Avoid repeating the request in comments.** Preserve it in `Reported`.
+- **Avoid repeating the request in comments.** The original issue body preserves
+  it; link there instead of copying it into each proposal revision.
 - **Bullets over paragraphs**, and one idea per bullet. A paragraph is for
   something that genuinely runs on.
 - **Options go in a table** — the option, what it costs, what it rules out.
