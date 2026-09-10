@@ -322,6 +322,25 @@ jobs:
           ISSUE: ${{ needs.route.outputs.issue }}
         run: node "${RUNNER_TEMP}/tooling/agents/state.mjs" learning
 
+      - name: Capture the request before planning
+        if: steps.correction.outputs.claimed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+          ISSUE: ${{ needs.route.outputs.issue }}
+        run: node "${RUNNER_TEMP}/tooling/agents/planning-run.mjs" capture
+
+      - uses: actions/create-github-app-token@v3.2.0
+        if: steps.correction.outputs.claimed == 'true'
+        id: reader-token
+        with:
+          client-id: ${{ secrets.AI_APP_ID }}
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-issues: read
+          permission-actions: read
+          permission-metadata: read
+
       - name: Build the planner prompt
         id: prompt
         env:
@@ -360,6 +379,7 @@ jobs:
         run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" start
 
       - uses: anthropics/claude-code-action@v1.0.219
+        id: planner
         if: steps.correction.outputs.claimed == 'true'
         with:
           allowed_bots:
@@ -368,10 +388,20 @@ jobs:
           claude_args:
             --model ${{ needs.route.outputs.model }} --effort ${{
             needs.route.outputs.effort }} --max-turns 60 --allowedTools
-            'mcp__github__*'
+            'mcp__github__*' Read Glob Grep Skill --json-schema
+            '{"type":"object","properties":{"kind":{"type":"string","enum":["proposal","question"]},"summary":{"type":"string"},"proposal":{"type":"string"}},"required":["kind","summary","proposal"],"additionalProperties":false}'
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ steps.app-token.outputs.token }}
+          github_token: ${{ steps.reader-token.outputs.token }}
           prompt: ${{ steps.prompt.outputs.text }}
+
+      - name: Publish the planner result and request review
+        if: steps.correction.outputs.claimed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+          ISSUE: ${{ needs.route.outputs.issue }}
+          PLANNER_RESULT: ${{ steps.planner.outputs.structured_output }}
+        run: node "${RUNNER_TEMP}/tooling/agents/planning-run.mjs" publish
 
       - name: Replace the reaction with the outcome
         if: always() && steps.reaction.outputs.target != ''

@@ -8,6 +8,7 @@
   "entry": [
     "agents/*.test.mjs",
     "agents/review-run.mjs",
+    "agents/planning-run.mjs",
     "agents/route-run.mjs",
     "packages/*/*.test.mjs",
     "renovate/*.test.mjs"
@@ -30,6 +31,18 @@
 
   "health": {
     "thresholdOverrides": [
+      {
+        "files": ["agents/planning.mjs"],
+        "functions": [
+          "capturePlanning",
+          "publishPlanning",
+          "publishCheckpoint",
+          "publishSummary",
+          "validateResult"
+        ],
+        "maxCrap": 57,
+        "reason": "Estimated CRAP does not measure node:test coverage. planning.test.mjs exercises ordered publication, discovery, checkpoint reuse, stale scope, revoked authorization, malformed output and failed summary writes. Other complexity limits stay unchanged."
+      },
       {
         "files": ["agents/automation.mjs"],
         "functions": ["validateCounter", "currentFinding", "requireSource"],

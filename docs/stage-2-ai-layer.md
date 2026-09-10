@@ -172,3 +172,11 @@ in run 34500160824. Run 34500349398 recorded authorization and implemented PR
 #14. After a separate main documentation update, repair run 34500811470 reused
 the same authorization; CI and Astra passed repaired head
 ad5855a2f9b5ddb57a5cf0f3da2045f26bc22d23. No issue reapproval was needed.
+
+The first live automatic correction test used sandbox issue #16. Astra run
+34503039037 rejected the seeded missing export, documentation and tests;
+repository-dispatch run 34503467054 invoked Fable without an owner relay. Fable
+published checkpoint 5622180528, but its MCP server could not update the summary
+pointer; review 34503758905 correctly rejected the stale pointer before calling
+the model. The publication fix moves all planner writes into trusted workflow
+code using structured model output. Its live retest remains pending.
