@@ -30,6 +30,30 @@
   "health": {
     "thresholdOverrides": [
       {
+        "files": ["agents/review-run.mjs"],
+        "functions": ["preparePullRequest", "preparePlan"],
+        "maxCrap": 73,
+        "reason": "Estimated CRAP does not measure node:test coverage. review-run.test.mjs invokes both CLI modes against a real Git repository and fake GitHub transport, including publication and duplicate suppression. Keep cyclomatic and cognitive limits unchanged."
+      },
+      {
+        "files": ["agents/pull-request.mjs"],
+        "functions": ["pullRequestIssue", "routePullRequest"],
+        "maxCrap": 57,
+        "reason": "Estimated CRAP does not measure node:test coverage. route.test.mjs and pr-review.test.mjs exercise the shared eligibility policy through routing and live publication checks. Keep cyclomatic and cognitive limits unchanged."
+      },
+      {
+        "files": ["agents/pr-review.mjs"],
+        "functions": ["readPullRequest"],
+        "maxCrap": 31,
+        "reason": "Estimated CRAP does not measure node:test coverage. pr-review.test.mjs exercises live PR validation and rejects changed heads, bases, drafts, closed PRs and forks. Keep cyclomatic and cognitive limits unchanged."
+      },
+      {
+        "files": ["agents/route.mjs"],
+        "functions": ["resolveRoute"],
+        "maxCrap": 31,
+        "reason": "Estimated CRAP does not measure node:test coverage. route.test.mjs exercises role selection and unauthorized event rejection through the public router. Keep cyclomatic and cognitive limits unchanged."
+      },
+      {
         "files": ["agents/review.mjs"],
         "functions": [
           "parseRecord",

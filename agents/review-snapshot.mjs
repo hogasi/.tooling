@@ -4,6 +4,35 @@ import { execFileSync } from "node:child_process";
 const MAX_INPUT_BYTES = 512 * 1024;
 
 /**
+Read the PR's three-dot diff with external diff drivers and text converters disabled.
+*/
+export function pullRequestSnapshot({ base, directory, head }) {
+  if ([base, head].some((sha) => !/^[a-f0-9]{40}$/.test(sha))) {
+    throw new Error("Invalid PR snapshot SHA");
+  }
+  const diff = execFileSync(
+    "git",
+    [
+      "-C",
+      directory,
+      "diff",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--no-renames",
+      `${base}...${head}`
+    ],
+    { encoding: "utf8", maxBuffer: MAX_INPUT_BYTES }
+  );
+  const snapshot = {
+    baseFiles: repositorySnapshot({ directory, sha: base }),
+    diff,
+    files: repositorySnapshot({ directory, sha: head })
+  };
+  requireInputSize(JSON.stringify(snapshot));
+  return snapshot;
+}
+
+/**
 Read committed blobs without checking out files, following symlinks, or running hooks.
 */
 export function repositorySnapshot({ directory, sha }) {

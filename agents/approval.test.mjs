@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 
-import { applyApproval } from "./approval.mjs";
+import { applyApproval, readApprovedProposal } from "./approval.mjs";
 
 const appLogin = "hogasi-ai[bot]";
 const body = "## Proposal\nImplement the agreed feature.\n";
@@ -308,3 +308,25 @@ for (const mode of ["record", "verify"]) {
     assert.equal(writes.length, 0);
   });
 }
+
+test("PR review reads owner approval without minting implementation authority", () => {
+  const { request, writes } = fixture({ issue: { ...issue, state: "open" } });
+  const proposal = readApprovedProposal(context, request);
+  assert.equal(proposal.digest, digest);
+  assert.equal(proposal.issue.body, issue.body);
+  assert.equal(writes.length, 0);
+});
+test("PR review rejects a revoked proposal", () => {
+  const { request } = fixture({
+    issue: { ...issue, state: "open" },
+    pages: [[record({ body: "<!-- hogasi-ai approval cleared -->" })]]
+  });
+  assert.throws(() => readApprovedProposal(context, request), /revoked/);
+});
+test("PR review rejects a human-authored approval marker", () => {
+  const { request } = fixture({
+    issue: { ...issue, state: "open" },
+    pages: [[record({ user: { login: "owner" } })]]
+  });
+  assert.throws(() => readApprovedProposal(context, request), /No approval/);
+});

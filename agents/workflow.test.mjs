@@ -74,7 +74,7 @@ test("the subscription smoke test pins Astra medium and never loads consumer cod
 const job = (name) =>
   workflow.split(`\n  ${name}:\n`)[1].split(/\n {2}[a-z-]+:\n/, 1)[0];
 const condition = (name) =>
-  name === "plan-review"
+  ["plan-review", "pr-review"].includes(name)
     ? job(name)
         .match(/if:\n([\s\S]*?)\n {4}uses:/)[1]
         .trim()
@@ -84,7 +84,8 @@ const condition = (name) =>
 const jobFor = {
   "implementer": "implement",
   "plan-reviewer": "plan-review",
-  "planner": "plan"
+  "planner": "plan",
+  "pr-reviewer": "pr-review"
 };
 const eligible = ({ approval, role, route }) =>
   runInNewContext(condition(jobFor[role]), {
@@ -102,7 +103,12 @@ const eligible = ({ approval, role, route }) =>
   });
 
 for (const route of ["failure", "cancelled", "skipped"]) {
-  for (const role of ["planner", "implementer", "plan-reviewer"]) {
+  for (const role of [
+    "planner",
+    "implementer",
+    "plan-reviewer",
+    "pr-reviewer"
+  ]) {
     test(`${role} never starts after ${route} routing`, () => {
       assert.equal(eligible({ approval: "skipped", role, route }), false);
     });
@@ -232,7 +238,7 @@ test("plan review uses the shared subscription queue without Claude credentials"
 
 test("the model cannot execute repository scripts or receive GitHub write tokens", () => {
   const model = codexWorkflow
-    .split("name: Review the proposal with Astra", 2)[1]
+    .split("name: Review with Astra", 2)[1]
     .split("# Mint this only after", 1)[0];
   assert.match(
     model,
@@ -242,7 +248,7 @@ test("the model cannot execute repository scripts or receive GitHub write tokens
   assert.doesNotMatch(model, /GH_TOKEN|AI_REVIEW_APP_PRIVATE_KEY/);
   assert.ok(
     codexWorkflow.indexOf("review-run.mjs prepare") <
-      codexWorkflow.indexOf("name: Review the proposal")
+      codexWorkflow.indexOf("name: Review with Astra")
   );
   assert.ok(
     codexWorkflow.indexOf("codex-auth.mjs clear") <
@@ -261,4 +267,31 @@ test("routing knows the App's own login so the planner can ask for review", () =
     route.slice(0, route.indexOf("Read the sender's repository permission")),
     /if: github.event.sender.type == 'User'/
   );
+});
+
+test("PR reviews use the same subscription queue and only the reviewer credentials", () => {
+  const review = job("pr-review");
+  assert.match(review, /uses: \.\/.github\/workflows\/codex-review.yml/);
+  assert.match(review, /mode: pr/);
+  assert.doesNotMatch(
+    review,
+    /CLAUDE_CODE|AI_APP_PRIVATE_KEY|cancel-in-progress/
+  );
+  assert.match(codexWorkflow, /permission-actions: read/);
+  assert.match(codexWorkflow, /permission-pull-requests:.*inputs.mode == 'pr'/);
+});
+test("a duplicate PR review does not restore or spend the subscription login", () => {
+  const auth = codexWorkflow
+    .split("name: Restore the subscription login", 2)[1]
+    .split("name: Check Astra", 1)[0];
+  const model = codexWorkflow
+    .split("name: Review with Astra", 2)[1]
+    .split("# Mint this", 1)[0];
+  assert.match(auth, /steps.prepare.outputs.prepared == 'true'/);
+  assert.match(model, /steps.prepare.outputs.prepared == 'true'/);
+});
+test("only the trusted base is checked out and PR commits are read as data", () => {
+  assert.match(codexWorkflow, /ref: \$\{\{ github.sha \}\}/);
+  assert.match(codexWorkflow, /fetch-depth: 0/);
+  assert.doesNotMatch(codexWorkflow, /ref:.*head|npm ci|pnpm install/);
 });

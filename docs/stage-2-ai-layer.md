@@ -1,25 +1,22 @@
 # Stage 2 — development directly in GitHub
 
-**Approved reviewer update:** both plan and PR review will use `gpt-6-astra` at
-`medium` reasoning through subscription-authenticated Codex CLI on GitHub-hosted
-runners. No API or hosted-review fallback. The first checkpoint is the
-[subscription preflight](setup.md#astra-subscription-preflight), which passed
-live Astra access, credential write-back, repeat use and three sequential queued
-runs on September 10, 2026. The Astra plan reviewer is now implemented locally;
-its live verdict tests and the Astra PR-review route remain pending. Both use
-(or will use) the same serialized login flow. Hosted PR-review instructions
-below are historical context, not an enrollment route for this subscription-only
-pilot.
+Both plan and PR review use `gpt-6-astra` at `medium` reasoning through
+subscription-authenticated Codex CLI on GitHub-hosted runners. No API or hosted
+review fallback. The
+[subscription preflight](setup.md#astra-subscription-preflight) and issue-plan
+verdict/approval tests passed in the sandbox on September 10, 2026. The PR route
+is implemented and awaits live validation. All three modes share one serialized
+login flow.
 
 The reviewer uses a separate `hogasi-review` App with read-only code access. Its
 credentials and the Codex login live in the consumer's `codex-review`
 environment. The existing `hogasi-ai` App retains discovery and implementation;
 it does not receive environment-write permission for credential persistence.
 
-**Full loop still unproven.** Local checks and the live Codex subscription
-preflight pass. Astra plan review still needs live validation; PR review still
-needs implementation. Complete the remaining sandbox verification below before
-enrolling a repository that matters.
+**Full loop still unproven.** Plan review rejected a defective proposal, passed
+its correction, blocked stale approval and allowed an approved implementation PR
+with passing CI. PR findings, repair and new-head review still need live
+validation. Complete the remaining sandbox checks before broader enrollment.
 
 The goal is a complete issue-to-merge development loop inside GitHub: discovery,
 planning, implementation, tests, independent review, and owner-directed repairs.
@@ -40,11 +37,10 @@ and Codex reviews it. No separate AI tester.
    implements it, writes tests, runs the repository checks, and opens a linked
    PR.
 5. Required CI independently runs against the latest proposed code. Codex
-   reviews the PR; GPT-6 Astra is the requested review model, subject to the
-   integration limitation below.
+   reviews the PR with Astra medium and publishes feedback pinned to its head.
 6. The owner requests a repair with `@claude` in the PR, referring to CI
    failures or review findings. Opus updates the same branch and CI runs again.
-   The owner can request another review with `@codex review`.
+   Each new commit triggers another review. An identical-input rerun is skipped.
 7. The owner merges after checking the evidence and resolving review
    discussions. `Closes #<n>` closes the issue on merge to the default branch.
 
@@ -74,6 +70,9 @@ Everything except `ci-node.yml`, which belongs to stage 1, now exists:
     ├── review-run.mjs               Actions preparation and publication entry point
     ├── review-snapshot.mjs          committed text snapshot and input size checks
     ├── review.schema.json          Codex structured response shape
+    ├── pr-review.mjs                PR capture, deduplication and publication
+    ├── pull-request.mjs             shared PR eligibility and routing
+    ├── pr-reviewer.md               Astra PR-review instructions
     ├── plan-reviewer.md             Astra plan-review instructions
     ├── codex-auth.mjs               restore, persist and remove the subscription login
     ├── github.mjs                   shared GitHub API transport
@@ -97,28 +96,28 @@ is one the CLI accepts. It is a module with tests rather than a `case` statement
 in YAML so the sandbox can exercise the routing table without spending
 subscription quota.
 
-| Setting                                | Canonical location                                                         | Override or enrollment                                                          |
-| -------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Planner model                          | Planner job in `.github/workflows/ai.yml`: `fable`                         | `AI_PLANNER_MODEL` Actions variable                                             |
-| Plan reviewer model                    | `agents/route.mjs` and `codex-review.yml`: `gpt-6-astra`                   | `AI_PLAN_REVIEWER_MODEL` Actions variable                                       |
-| Implementer model                      | Implementer job in `.github/workflows/ai.yml`: `opus`                      | `AI_IMPLEMENTER_MODEL` Actions variable                                         |
-| Claude effort                          | Role jobs in `ai.yml`: start at `high`                                     | `AI_PLANNER_EFFORT`, `AI_IMPLEMENTER_EFFORT`                                    |
-| Plan review effort                     | `agents/route.mjs` and `codex-review.yml`: `medium`                        | `AI_PLAN_REVIEWER_EFFORT`: `low` or `medium`                                    |
-| Reviewer credentials                   | Consumer `codex-review` environment                                        | `CODEX_AUTH_JSON`, `AI_REVIEW_APP_ID`, `AI_REVIEW_APP_PRIVATE_KEY`              |
-| Trusted reviewer identity              | `AI_REVIEW_APP_LOGIN`, default `hogasi-review[bot]`                        | Consumer Actions variable only for a differently named App                      |
-| Turn limits and timeouts               | Explicit per-role values in `ai.yml`, chosen and exercised in the sandbox  | Change through a tooling PR                                                     |
-| Role enablement                        | `vars.AI_ROLES` checked by `ai.yml`; unset means disabled                  | GitHub Actions variable: `planner`, then `planner,plan-reviewer,implementer`    |
-| Role behavior                          | `agents/planner.md`, `agents/plan-reviewer.md` and `agents/implementer.md` | Consumer conventions in its own `AGENTS.md`                                     |
-| Discovery method                       | `agents/skills/grilling/SKILL.md`                                          | GitHub adaptation in `agents/planner.md`                                        |
-| Review instructions                    | `agents/review-guidelines.md`                                              | Copied into consumer `AGENTS.md`; subsequently owned by that repo               |
-| Codex model and automatic reviews      | Codex settings for the linked account/repository                           | Verify Astra selection there; workflow variables cannot select the hosted model |
-| Claude OAuth token and App credentials | GitHub organization Actions secrets                                        | Explicitly granted to each enrolled repository and forwarded by its caller      |
-| Required checks and branch rules       | GitHub repository or scoped organization rulesets                          | Enrollment checklist in [setup.md](setup.md)                                    |
+| Setting                                | Canonical location                                                                                  | Override or enrollment                                                                   |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Planner model                          | Planner job in `.github/workflows/ai.yml`: `fable`                                                  | `AI_PLANNER_MODEL` Actions variable                                                      |
+| Plan reviewer model                    | `agents/route.mjs` and `codex-review.yml`: `gpt-6-astra`                                            | `AI_PLAN_REVIEWER_MODEL` Actions variable                                                |
+| Implementer model                      | Implementer job in `.github/workflows/ai.yml`: `opus`                                               | `AI_IMPLEMENTER_MODEL` Actions variable                                                  |
+| Claude effort                          | Role jobs in `ai.yml`: start at `high`                                                              | `AI_PLANNER_EFFORT`, `AI_IMPLEMENTER_EFFORT`                                             |
+| Plan review effort                     | `agents/route.mjs` and `codex-review.yml`: `medium`                                                 | `AI_PLAN_REVIEWER_EFFORT`: `low` or `medium`                                             |
+| Reviewer credentials                   | Consumer `codex-review` environment                                                                 | `CODEX_AUTH_JSON`, `AI_REVIEW_APP_ID`, `AI_REVIEW_APP_PRIVATE_KEY`                       |
+| Trusted reviewer identity              | `AI_REVIEW_APP_LOGIN`, default `hogasi-review[bot]`                                                 | Consumer Actions variable only for a differently named App                               |
+| Turn limits and timeouts               | Explicit per-role values in `ai.yml`, chosen and exercised in the sandbox                           | Change through a tooling PR                                                              |
+| Role enablement                        | `vars.AI_ROLES` checked by `ai.yml`; unset means disabled                                           | GitHub Actions variable: `planner`, then `planner,plan-reviewer,implementer,pr-reviewer` |
+| Role behavior                          | `agents/planner.md`, `agents/plan-reviewer.md`, `agents/pr-reviewer.md` and `agents/implementer.md` | Consumer conventions in its own `AGENTS.md`                                              |
+| Discovery method                       | `agents/skills/grilling/SKILL.md`                                                                   | GitHub adaptation in `agents/planner.md`                                                 |
+| Review instructions                    | `agents/review-guidelines.md`                                                                       | Copied into consumer `AGENTS.md`; subsequently owned by that repo                        |
+| PR model and effort                    | `agents/route.mjs` and `codex-review.yml`: `gpt-6-astra`, `medium`                                  | `AI_PR_REVIEWER_MODEL`, `AI_PR_REVIEWER_EFFORT` (`low` or `medium`)                      |
+| Claude OAuth token and App credentials | GitHub organization Actions secrets                                                                 | Explicitly granted to each enrolled repository and forwarded by its caller               |
+| Required checks and branch rules       | GitHub repository or scoped organization rulesets                                                   | Enrollment checklist in [setup.md](setup.md)                                             |
 
 Model and effort defaults are executable workflow settings, not prompt front
 matter requiring a custom parser. `ai.yml` passes the resolved values through
 `claude_args` as `--model` and `--effort` for Claude roles; the shared Codex
-workflow receives validated Astra model and effort inputs for plan review.
+workflow receives validated Astra model and effort inputs for both reviews.
 Validate overrides against supported values before invoking either provider; do
 not interpolate arbitrary variable contents into shell commands. Record the
 selected model and effort in run output.
@@ -155,10 +154,10 @@ default branch instead, and the ignore rule is the reason lint would not say so.
 - **Implementation, test writing, and repairs: Opus.** Use `opus` through the
   same Claude Action and OAuth token, with a fresh run reading the approved
   issue and repository rather than relying on hidden session state.
-- **Independent plan review: GPT-6 Astra medium.** Subscription Codex CLI on
-  GitHub-hosted runners, using the separate reviewer App and environment.
-  Structured results are published by trusted code. PR review through the same
-  runner is the next implementation step; no hosted or API fallback is approved.
+- **Independent plan and PR review: GPT-6 Astra medium.** Subscription Codex CLI
+  on GitHub-hosted runners, using the separate reviewer App and environment.
+  Structured results are published by trusted code; no hosted or API fallback is
+  approved. PR reviews are COMMENT feedback, separate from CI and owner merge.
 
 The intended authentication path is subscriptions. Fable is included within
 limits on Max and premium seats, but Pro requires usage credits. Verify access
@@ -170,6 +169,24 @@ Sources checked on 2026-09-09:
 [Fable plan access](https://support.claude.com/en/articles/15424964-claude-fable-models-on-your-plan),
 [Codex GitHub reviews](https://learn.chatgpt.com/docs/third-party/github), and
 [Codex Action](https://learn.chatgpt.com/docs/github-action).
+
+## PR review boundaries
+
+The shared runner reads only App-authored, open, non-draft `claude/issue-<n>`
+PRs from the same repository against its default branch. It captures the
+approved issue body, three-dot diff, committed base/head text, PR discussion and
+Actions results for the exact head. Repository content is input data; Codex
+tools and repository script execution are disabled. Binary contents are
+unavailable and submodules or prompts exceeding 512 KiB fail visibly. Larger
+repositories need scoped retrieval before enrollment.
+
+Before publishing a COMMENT review, trusted code rechecks the PR and approved
+proposal. Matching reviewer records suppress duplicate calls for the same base,
+head, proposal, model and effort. The feedback names those revisions and reports
+CI as captured, without treating pending or absent checks as successful tests.
+CI completion alone does not schedule a review. Owner-directed repairs remain
+explicit; bot feedback never starts Claude. See
+[enrollment and live tests](setup.md#enable-pr-review).
 
 ## Discovery and planning in the issue
 
@@ -232,7 +249,7 @@ the planner starts implementation before approval.
 | Owner comments on an approved issue                  | Ordinary comments do not restart discovery or implementation                            |
 | Owner explicitly requests replanning                 | Clear approval and return to discovery; require approval of the revised proposal        |
 | Owner comments `@claude` on the linked PR            | Implementer addresses the requested repairs within the approved scope                   |
-| App pushes or opens a PR                             | Normal CI runs; Codex follows its configured review triggers                            |
+| App pushes or opens a PR                             | Normal CI runs; eligible opened/ready/synchronize events start Astra PR review          |
 | Codex or App comments/reviews                        | Feedback only; no automatic Claude invocation                                           |
 
 Approval is enforced by `agents/approval.mjs`, invoked by the workflow.
@@ -306,7 +323,7 @@ scope; `agents/implementer.md` and `agents/planner.md` both say so explicitly.
 
 ## Writes, verification, and recovery
 
-Use one org-owned GitHub App identity with no webhook receiver or hosted
+Use the implementation and reviewer Apps with no webhook receiver or hosted
 service. Mint short-lived tokens scoped to the current repository and role's
 needed permissions. PR creation and pushes use that identity so normal CI can
 run; relying on `GITHUB_TOKEN` for those writes suppresses follow-up workflow
@@ -326,22 +343,22 @@ evidence; unit tests alone do not demonstrate those outcomes. Product-specific
 setup and test commands stay in the consumer. No model-generated success message
 replaces a command's exit code, and no AI job is a required test check.
 
-CI remains enabled when AI is disabled. Clearing `AI_ROLES` disables Claude only
-where a repository override does not replace it. For an organization-wide stop,
-suspend the App and cancel active AI runs; disable hosted Codex review
-separately. These controls do not promise cancellation of already-running
-provider requests.
+CI remains enabled when AI is disabled. Clearing `AI_ROLES` disables the AI
+routes only where a repository override does not replace it. For an
+organization-wide stop, suspend both Apps and cancel active AI runs. The
+separately dispatched smoke check is not controlled by `AI_ROLES`. These
+controls do not promise cancellation of already-running provider requests.
 
 ## Delivery phases
 
 **A — prove the complete loop in one private sandbox.** Everything needed to
 start is now in this repository; what is missing is evidence that it works.
-Start with planner-only access, verify Fable and hosted Codex model
-availability, then enable the implementer. Use ordinary local CI with required
-checks; this does not wait for stage 1's reusable workflow. Prove an issue
-reaches an approved plan, PR, failing check, owner-requested repair, green CI,
-review, and owner merge. All human interaction after enrollment happens in
-GitHub.
+Start with planner-only access, verify Fable and subscription Astra access, then
+enable plan review, implementation and PR review in that order. Use ordinary
+local CI with required checks; this does not wait for stage 1's reusable
+workflow. Prove an issue reaches an approved plan, PR, failing check,
+owner-requested repair, green CI, review, and owner merge. All human interaction
+after enrollment happens in GitHub.
 
 Before phase A is complete, also exercise a changed proposal after approval, a
 duplicate event/rerun, a concurrent branch edit, a cancelled or quota-limited
@@ -352,9 +369,9 @@ reach because it is a property of the workflow's `if:` conditions rather than of
 `route.mjs`; that `job.workflow_sha` really pins the prompts; and that the
 per-role turn limits and timeouts in `ai.yml` — 60 turns and 30 minutes for the
 planner, 200 and 60 for the implementer — are near the right size. Both were
-chosen from reasoning, not evidence. Record actual review events and whether
-subsequent commits need an explicit review request. Do not make a
-`changes_requested` verdict a dependency.
+chosen from reasoning, not evidence. Record actual opened, ready-for-review and
+synchronize events and verify subsequent commits receive a new review. Do not
+make a `changes_requested` verdict a dependency.
 
 **B — use it on product repo #1.** Adopt stage 1 CI, enroll secrets and scoped
 required checks, and carry the proven caller and prompts over. Measure completed

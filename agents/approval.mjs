@@ -24,6 +24,21 @@ export function applyApproval(context, callGitHub = githubRequest) {
     : verifyApproval(context, callGitHub, issue);
 }
 
+/**
+Read the authenticated owner-approved proposal without granting implementation authority.
+PR review checks the code against this proposal; it does not reapprove a new base commit.
+*/
+export function readApprovedProposal(context, callGitHub = githubRequest) {
+  validateProposalContext(context);
+  const issue = readIssue(context, callGitHub);
+  if (issue.state !== "open" || issue.pull_request) {
+    throw new Error("The approved proposal is no longer an open issue");
+  }
+  requireLabels(issue);
+  const digest = verifyApproval(context, callGitHub, issue);
+  return { digest, issue };
+}
+
 function clearApproval(context, callGitHub, issue) {
   const path = `repos/${context.repository}/issues/${context.issueNumber}`;
   if (issue.labels.some((label) => label.name === DEV_LABEL)) {
@@ -161,12 +176,7 @@ function requireLabels(issue) {
 }
 
 function validateContext(context) {
-  if (!/^[\w-]+\/[\w.-]+$/.test(context.repository)) {
-    throw new Error("Invalid repository");
-  }
-  if (!/^[1-9]\d*$/.test(context.issueNumber)) {
-    throw new Error("Invalid issue number");
-  }
+  validateProposalContext(context);
   if (
     typeof context.actor !== "string" ||
     !/^[\w-]+$/.test(context.actor) ||
@@ -202,4 +212,16 @@ function verifyApproval(context, callGitHub, issue) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main();
+}
+
+function validateProposalContext(context) {
+  if (!/^[\w-]+\/[\w.-]+$/.test(context.repository)) {
+    throw new Error("Invalid repository");
+  }
+  if (!/^[1-9]\d*$/.test(context.issueNumber)) {
+    throw new Error("Invalid issue number");
+  }
+  if (!/^[\w-]+\[bot\]$/.test(context.appLogin)) {
+    throw new Error("Invalid App login");
+  }
 }
