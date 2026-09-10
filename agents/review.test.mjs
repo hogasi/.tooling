@@ -131,7 +131,10 @@ test("review start retracts a pass and records pending before model execution", 
   const { request, writes } = fixture({
     current: { ...issue, labels: [...issue.labels, { name: "reviewed" }] }
   });
-  assert.deepEqual(beginReview(context, request).snapshot, snapshot);
+  assert.deepEqual(beginReview(context, request).snapshot, {
+    ...snapshot,
+    pulls: []
+  });
   assert.equal(writes[0].method, "PATCH");
   assert.match(writes[0].body.body, /pending/);
 });

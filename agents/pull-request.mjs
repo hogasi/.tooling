@@ -2,6 +2,23 @@ import { githubRequest, readPages } from "./github.mjs";
 
 const skipReview = (reason) => ({ approval: "none", reason, role: "" });
 
+export function findImplementationPull(context, callGitHub = githubRequest) {
+  const branch = `claude/issue-${context.issueNumber}`;
+  const pulls = readPages(
+    `repos/${context.repository}/pulls?state=open&head=${context.repository.split("/", 1)[0]}:${branch}&per_page=100`,
+    callGitHub
+  ).filter(
+    (pull) =>
+      pull.head.ref === branch &&
+      pull.state === "open" &&
+      hasSameRepository(pull, context.repository) &&
+      pull.user?.login === context.appLogin
+  );
+  if (pulls.length > 1) {
+    throw new Error("Expected exactly one open App implementation PR");
+  }
+  return pulls[0];
+}
 export function hasSameRepository(pullRequest, repository) {
   return (
     pullRequest.head?.repo?.full_name === repository &&
@@ -11,6 +28,7 @@ export function hasSameRepository(pullRequest, repository) {
 export function mergeTarget(pull) {
   return pull.stack?.base?.ref ?? pull.base?.ref;
 }
+
 /**
 Return the linked issue only for an open, non-draft implementation PR in this repository.
 */
@@ -34,20 +52,11 @@ export function pullRequestIssue({
 }
 
 export function readImplementationPull(context, callGitHub = githubRequest) {
-  const branch = `claude/issue-${context.issueNumber}`;
-  const pulls = readPages(
-    `repos/${context.repository}/pulls?state=open&head=${context.repository.split("/", 1)[0]}:${branch}&per_page=100`,
-    callGitHub
-  ).filter(
-    (pull) =>
-      pull.head.ref === branch &&
-      hasSameRepository(pull, context.repository) &&
-      pull.user?.login === context.appLogin
-  );
-  if (pulls.length !== 1) {
+  const pull = findImplementationPull(context, callGitHub);
+  if (!pull) {
     throw new Error("Expected exactly one open App implementation PR");
   }
-  return pulls[0];
+  return pull;
 }
 
 export function routePullRequest(event) {

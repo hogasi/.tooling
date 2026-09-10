@@ -65,6 +65,7 @@ jobs:
 
       - name: Validate review settings
         env:
+          TOOLING_SHA: ${{ job.workflow_sha }}
           REVIEW_MODE: ${{ inputs.mode }}
           AI_PLAN_REVIEWER_MODEL: ${{ inputs.model }}
           AI_PLAN_REVIEWER_EFFORT: ${{ inputs.effort }}
@@ -92,7 +93,8 @@ jobs:
           private-key: ${{ secrets.AI_REVIEW_APP_PRIVATE_KEY }}
           permission-contents: read
           permission-actions: read
-          permission-pull-requests: ${{ inputs.mode == 'pr' && 'write' || '' }}
+          permission-pull-requests:
+            ${{ inputs.mode == 'pr' && 'write' || 'read' }}
           permission-issues: write
           permission-metadata: read
 
@@ -101,6 +103,7 @@ jobs:
         if: inputs.mode != 'smoke'
         env:
           GH_TOKEN: ${{ steps.review-token.outputs.token }}
+          TOOLING_SHA: ${{ job.workflow_sha }}
           REVIEW_MODE: ${{ inputs.mode }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           AI_CI_WORKFLOW: ${{ vars.AI_CI_WORKFLOW }}
@@ -194,6 +197,7 @@ jobs:
         if: steps.prepare.outputs.prepared == 'true'
         env:
           GH_TOKEN: ${{ steps.review-token.outputs.token }}
+          TOOLING_SHA: ${{ job.workflow_sha }}
           REVIEW_MODE: ${{ inputs.mode }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           AI_CI_WORKFLOW: ${{ vars.AI_CI_WORKFLOW }}

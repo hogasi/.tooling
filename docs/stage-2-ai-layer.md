@@ -118,6 +118,13 @@ handoff to the default-branch caller, validate the current approved parent or
 prerequisite base, and include inherited parent context. The privileged caller
 must restrict PR-target events to the default branch.
 
+Parent/child plan reviews also receive the related open App PR snapshots and
+selected delivery implementation files from the pinned tooling commit. The
+reviewer does not need source-code dumps in issue comments. Referenced PR inputs
+are checked again before publication; changed or newly opened related PRs
+invalidate the in-flight review. All code is read as committed blobs, with no
+checkout or execution of that code.
+
 The complete prompt is limited to 512 KiB. Submodules fail visibly; binary
 contents are unavailable. Larger repos need scoped retrieval before enrollment.
 The runner rechecks proposal and code revisions before publishing COMMENT
