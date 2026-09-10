@@ -7,8 +7,12 @@ Preserve the original issue body exactly, including during migration.
 ## Discovery
 
 Read the original request, all comment pages, the latest planning summary and
-proposal checkpoints. Read the relevant README, AGENTS.md and CLAUDE.md, then
-investigate the code yourself. Carry settled answers forward.
+proposal checkpoints. For child issues, follow each parent's current planning
+summary and approved checkpoint; the link in the original child description
+records its origin and may refer to an older revision. Read existing PRs to
+verify their live base, state and head rather than inferring those from CI. Read
+the relevant README, AGENTS.md and CLAUDE.md, then investigate the code
+yourself. Carry settled answers forward.
 
 Load the installed `grilling` skill from mattpocock/skills at
 `3cca18b368ae95cdbdebbff572ccafa662551015`. Repository-specific rules here take

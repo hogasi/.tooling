@@ -103,11 +103,13 @@ export function updateParentPull(context, callGitHub = githubRequest) {
   }
   const body = parentPullBody(context, state, callGitHub);
   if (existing) {
-    callGitHub({
-      body: { body },
-      method: "PATCH",
-      path: `repos/${context.repository}/pulls/${existing.number}`
-    });
+    if (existing.body !== body) {
+      callGitHub({
+        body: { body },
+        method: "PATCH",
+        path: `repos/${context.repository}/pulls/${existing.number}`
+      });
+    }
     return { ...existing, body, complete: state.complete };
   }
   return createParentPull(context, { base, body, branch, state }, callGitHub);
