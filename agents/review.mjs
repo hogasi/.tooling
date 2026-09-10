@@ -1,3 +1,4 @@
+import { verifyInheritance } from "./delivery-scope.mjs";
 import { githubRequest } from "./github.mjs";
 import { latestComment, readComments, readProposal } from "./proposal.mjs";
 import { setStatus } from "./state.mjs";
@@ -14,6 +15,7 @@ export function beginReview(context, callGitHub = githubRequest) {
   validateContext(context);
   validateRun(context);
   const issue = readReadyIssue(context, callGitHub);
+  const inherited = verifyInheritance(context, issue, callGitHub);
   const proposal = readProposal(context, callGitHub);
   if (currentSha(context, callGitHub) !== context.sha) {
     throw new Error("Review input changed while queued; reapply in review");
@@ -32,7 +34,7 @@ export function beginReview(context, callGitHub = githubRequest) {
     status: "pending"
   });
   setStatus(context, "in review", callGitHub);
-  return { comments, issue, proposal, snapshot };
+  return { comments, inherited, issue, proposal, snapshot };
 }
 
 /**
@@ -41,7 +43,7 @@ Publish only if the proposal and repository still match the reviewed snapshot.
 export function publishReview(context, callGitHub = githubRequest) {
   validateContext(context);
   const verdict = validateVerdict(context.verdict);
-  readReadyIssue(context, callGitHub);
+  verifyInheritance(context, readReadyIssue(context, callGitHub), callGitHub);
   const { snapshot } = context;
   const proposal = readProposal(context, callGitHub);
   if (

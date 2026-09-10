@@ -6,6 +6,7 @@ import { resolveChildDiscovery } from "./delivery.mjs";
 import { resolveCiWorkflow } from "./repair-evidence.mjs";
 import { resolveRepair } from "./repair.mjs";
 import { decide, resolveEnabledRoles, settingsFor } from "./route.mjs";
+import { parentIntegrationRoute, stackReviewRoute } from "./stack-review.mjs";
 
 function correctionDecision(environment) {
   if (!resolveEnabledRoles(environment.AI_ROLES).has("planner")) {
@@ -26,6 +27,18 @@ function correctionDecision(environment) {
   });
 }
 
+function implementationDecision(context, stack) {
+  if (context.eventName === "workflow_run") {
+    const merged = parentIntegrationRoute(context);
+    if (merged) {
+      return merged;
+    }
+  }
+  const repair = resolveRepair(context);
+  return stack?.stack_pull
+    ? { ...stack, ...repair, issue: repair.issue ?? stack.issue }
+    : repair;
+}
 function main() {
   const environment = process.env;
   const decision = routeEvent(environment);
@@ -39,15 +52,9 @@ function main() {
       .join("")
   );
 }
-function repairDecision(environment) {
-  if (!resolveEnabledRoles(environment.AI_ROLES).has("implementer")) {
-    return {
-      approval: "none",
-      reason: "implementer is not in AI_ROLES",
-      role: ""
-    };
-  }
-  return resolveRepair({
+
+function repairContext(environment) {
+  return {
     appLogin: environment.APP_LOGIN,
     ciWorkflow: resolveCiWorkflow(environment.AI_CI_WORKFLOW),
     defaultBranch: environment.EVENT_DEFAULT_BRANCH,
@@ -61,7 +68,27 @@ function repairDecision(environment) {
       environment.EVENT_NAME === "workflow_run"
         ? environment.CI_RUN
         : environment.HANDOFF_SOURCE
-  });
+  };
+}
+
+function repairDecision(environment) {
+  const roles = resolveEnabledRoles(environment.AI_ROLES);
+  const context = repairContext(environment);
+  const stack = currentStackReview(context, roles);
+  if (stack?.role && roles.has("pr-reviewer")) {
+    return {
+      ...stack,
+      stack_pull: roles.has("implementer") ? stack.stack_pull : ""
+    };
+  }
+  if (!roles.has("implementer")) {
+    return {
+      approval: "none",
+      reason: "implementer is not in AI_ROLES",
+      role: ""
+    };
+  }
+  return implementationDecision(context, stack);
 }
 
 function routeEvent(environment) {
@@ -91,3 +118,13 @@ function routeEvent(environment) {
 }
 
 main();
+
+function currentStackReview(context, roles) {
+  if (
+    context.eventName !== "workflow_run" ||
+    (!roles.has("pr-reviewer") && !roles.has("implementer"))
+  ) {
+    return null;
+  }
+  return stackReviewRoute(context);
+}

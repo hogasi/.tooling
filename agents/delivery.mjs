@@ -1,43 +1,54 @@
 import { applyApproval, readApprovedProposal } from "./approval.mjs";
-import { requireDependencies } from "./delivery-evidence.mjs";
 import { readDeliveryPlan } from "./delivery-plan.mjs";
 import { refreshDelivery } from "./delivery-progress.mjs";
-import { childBody, readChild, verifyInheritance } from "./delivery-scope.mjs";
+import {
+  appendInheritance,
+  childBody,
+  readChild,
+  readInheritance
+} from "./delivery-scope.mjs";
 import { githubRequest, readPages } from "./github.mjs";
 import { latestComment, readComments } from "./proposal.mjs";
 
 export function claimChildDiscovery(context, callGitHub = githubRequest) {
-  const decision = resolveChildDiscovery(context, callGitHub);
-  if (!decision.role) {
+  if (!resolveChildDiscovery(context, callGitHub).role) {
     return false;
   }
+  const issue = callGitHub({
+    path: `repos/${context.repository}/issues/${context.issueNumber}`
+  });
+  const scope = appendInheritance(
+    "",
+    readInheritance(context, issue, callGitHub)
+  );
+  const comments = readComments(context, callGitHub);
+  const authored = { comments, login: context.appLogin };
   const summary = latestComment({
-    comments: readComments(context, callGitHub),
-    login: context.appLogin,
+    ...authored,
     marker: "<!-- hogasi-ai planning "
   });
-  if (summary) {
+  const checkpoint = latestComment({
+    ...authored,
+    marker: "<!-- hogasi-ai proposal -->"
+  });
+  if (
+    checkpoint?.body.endsWith(scope) ||
+    summary?.body.includes(JSON.stringify({ discovery: scope }))
+  ) {
     return false;
   }
-  callGitHub({
-    body: {
-      body: '<!-- hogasi-ai planning {"proposal":null} -->\nDiscovery started for the inherited child deliverable.'
-    },
-    method: "POST",
-    path: `repos/${context.repository}/issues/${context.issueNumber}/comments`
-  });
+  claimChildScope(context, { checkpoint, issue, scope, summary }, callGitHub);
   return true;
 }
 
 export function createChildren(context, callGitHub = githubRequest) {
-  const { issue, proposal } = readApprovedProposal(context, callGitHub);
+  const { proposal } = readApprovedProposal(context, callGitHub);
   const definitions = readDeliveryPlan(proposal);
   if (definitions.length === 0) {
-    requireDependencies(context, issue, callGitHub);
     return [];
   }
   const existing = readPages(
-    `repos/${context.repository}/issues?state=all&since=${encodeURIComponent(proposal.createdAt)}&per_page=100`,
+    `repos/${context.repository}/issues?state=all&per_page=100`,
     callGitHub
   );
   const children = definitions.map((child) =>
@@ -66,7 +77,7 @@ export function resolveChildDiscovery(context, callGitHub = githubRequest) {
       role: ""
     };
   }
-  verifyInheritance(context, issue, callGitHub);
+  readInheritance(context, issue, callGitHub);
   requireChildSource(context, child.parent, callGitHub);
   return {
     approval: "none",
@@ -77,6 +88,28 @@ export function resolveChildDiscovery(context, callGitHub = githubRequest) {
     role: "planner",
     source: context.sourceRunId
   };
+}
+
+function claimChildScope(
+  context,
+  { checkpoint, issue, scope, summary },
+  callGitHub
+) {
+  if (issue.labels.some((label) => label.name === "ready for dev")) {
+    callGitHub({
+      method: "DELETE",
+      path: `repos/${context.repository}/issues/${context.issueNumber}/labels/ready%20for%20dev`
+    });
+  }
+  const record = { proposal: checkpoint?.id ?? null };
+  const body = `<!-- hogasi-ai planning ${JSON.stringify(record)} -->\n<!-- hogasi-ai ${JSON.stringify({ discovery: scope })} -->\nDiscovery started for the current approved parent deliverable. Existing implementation requires a newly reviewed child checkpoint and owner authorization.`;
+  callGitHub({
+    body: { body },
+    method: summary ? "PATCH" : "POST",
+    path: summary
+      ? `repos/${context.repository}/issues/comments/${summary.id}`
+      : `repos/${context.repository}/issues/${context.issueNumber}/comments`
+  });
 }
 
 function createChildIssue(context, { body, child }, callGitHub) {
@@ -99,7 +132,9 @@ function ensureChild(context, { child, existing, proposal }, callGitHub) {
   const matches = existing.filter(
     (issue) =>
       issue.user?.login === context.appLogin &&
-      issue.body === body &&
+      readChild(issue, context.appLogin)?.parent ===
+        Number(context.issueNumber) &&
+      readChild(issue, context.appLogin)?.key === child.key &&
       !issue.pull_request
   );
   if (matches.length > 1) {
