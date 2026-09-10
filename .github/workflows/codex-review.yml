@@ -2,8 +2,7 @@ name: Codex subscription check
 
 on:
   workflow_call:
-    # Declare the names used by this workflow. Values come from the job's
-    # environment; callers do not need to forward repository secrets.
+    # Explicit caller mappings are required to resolve these environment secrets.
     secrets:
       CODEX_AUTH_JSON:
         required: false

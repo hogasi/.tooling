@@ -3,21 +3,21 @@
 **Approved reviewer update:** both plan and PR review will use `gpt-6-astra` at
 `medium` reasoning through subscription-authenticated Codex CLI on GitHub-hosted
 runners. No API or hosted-review fallback. The first checkpoint is the
-[subscription preflight](setup.md#astra-subscription-preflight), now implemented
-locally but not yet run in GitHub. After it passes, replace the Claude plan
-reviewer and add PR review through the same serialized login flow. The
-hosted-review and Opus plan-review instructions below describe the existing
-implementation until those remaining changes land.
+[subscription preflight](setup.md#astra-subscription-preflight), which passed
+live Astra access, credential write-back, repeat use and three sequential queued
+runs on September 10, 2026. Next, replace the Claude plan reviewer and add PR
+review through the same serialized login flow. The hosted-review and Opus
+plan-review instructions below describe the existing implementation until those
+remaining changes land.
 
 The reviewer uses a separate `hogasi-review` App with read-only code access. Its
 credentials and the Codex login live in the consumer's `codex-review`
 environment. The existing `hogasi-ai` App retains discovery and implementation;
 it does not receive environment-write permission for credential persistence.
 
-**Built, unproven.** The files exist and pass this repository's own checks; no
-part of the loop has yet run against GitHub. Phase A below is what turns this
-from written to working, and nothing here should be enrolled on a repository
-that matters until it has.
+**Full loop still unproven.** Local checks and the live Codex subscription
+preflight pass. Both Astra review routes still need implementation. Complete the
+remaining sandbox verification below before enrolling a repository that matters.
 
 The goal is a complete issue-to-merge development loop inside GitHub: discovery,
 planning, implementation, tests, independent review, and owner-directed repairs.
