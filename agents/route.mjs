@@ -15,6 +15,8 @@
 import { appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { routePullRequest } from "./pull-request.mjs";
+
 const AUTHORIZED_ASSOCIATIONS = new Set(["COLLABORATOR", "MEMBER", "OWNER"]);
 const OWNER_ASSOCIATION = "OWNER";
 const DEV_LABEL = "ready for dev";
@@ -100,8 +102,8 @@ const senderAuthority = (event) =>
 
 /**
  * The planner applies `ready` as the App, so the review it asks for arrives as
- * a bot event. This is the only bot event that starts a role: the App's own
- * login, on that one label, on an issue. The login comes from the workflow's
+ * a bot event. This issue-label exception admits only the App's own login;
+ * PR events have a separate provenance check. The login comes from the workflow's
  * App-token step rather than from the payload, so a comment claiming to be the
  * App does not qualify.
  */
@@ -132,10 +134,15 @@ const readEvent = (environment) => ({
   associationSubject: text(environment.EVENT_ASSOCIATION_SUBJECT),
   authorAssociation: text(environment.EVENT_AUTHOR_ASSOCIATION),
   commentBody: text(environment.EVENT_COMMENT_BODY),
+  defaultBranch: text(environment.EVENT_DEFAULT_BRANCH),
   eventName: text(environment.EVENT_NAME),
   isPullRequest: environment.EVENT_IS_PULL_REQUEST === "true",
   labelName: text(environment.EVENT_LABEL),
   labels: environment.EVENT_LABELS ? JSON.parse(environment.EVENT_LABELS) : [],
+  pullRequest: environment.EVENT_PULL_REQUEST
+    ? JSON.parse(environment.EVENT_PULL_REQUEST)
+    : undefined,
+  repository: text(environment.GITHUB_REPOSITORY),
   senderLogin: text(environment.EVENT_SENDER),
   senderPermission: text(environment.EVENT_SENDER_PERMISSION),
   senderType: text(environment.EVENT_SENDER_TYPE)
@@ -303,6 +310,9 @@ export function resolveModel({ fallback, override }) {
  * @returns {{ approval: string, reason: string, role: string }}
  */
 export function resolveRoute(event) {
+  if (event.eventName === "pull_request_target") {
+    return routePullRequest(event);
+  }
   const failure = authorizationFailure(event);
 
   if (failure) {
@@ -349,7 +359,16 @@ const ROLE_SETTINGS = new Map([
  */
 export function settingsFor(role, environment) {
   if (role === "plan-reviewer") {
-    return reviewSettings(environment);
+    return reviewSettings({
+      effort: environment.AI_PLAN_REVIEWER_EFFORT,
+      model: environment.AI_PLAN_REVIEWER_MODEL
+    });
+  }
+  if (role === "pr-reviewer") {
+    return reviewSettings({
+      effort: environment.AI_PR_REVIEWER_EFFORT,
+      model: environment.AI_PR_REVIEWER_MODEL
+    });
   }
   const read = ROLE_SETTINGS.get(role);
 
@@ -388,9 +407,9 @@ function main() {
 /**
 Keep the subscription pilot on the verified model and supported review efforts.
 */
-function reviewSettings(environment) {
-  const model = selected(environment.AI_PLAN_REVIEWER_MODEL, "gpt-6-astra");
-  const effort = selected(environment.AI_PLAN_REVIEWER_EFFORT, "medium");
+function reviewSettings(overrides) {
+  const model = selected(overrides.model, "gpt-6-astra");
+  const effort = selected(overrides.effort, "medium");
   if (model !== "gpt-6-astra" || !["low", "medium"].includes(effort)) {
     throw new Error(
       "Unsupported Codex review settings; use gpt-6-astra with low or medium effort"

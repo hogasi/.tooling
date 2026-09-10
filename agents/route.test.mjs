@@ -611,3 +611,114 @@ test("a reader cannot request review on another author's issue", () => {
   );
   assert.equal(decision.role, "");
 });
+
+const implementationPull = {
+  base: { ref: "main", repo: { full_name: "hogasi/sandbox" } },
+  draft: false,
+  head: { ref: "claude/issue-9", repo: { full_name: "hogasi/sandbox" } },
+  state: "open",
+  user: { login: "hogasi-ai[bot]" }
+};
+const pullEvent = (overrides = {}) => ({
+  action: "opened",
+  appLogin: "hogasi-ai[bot]",
+  defaultBranch: "main",
+  eventName: "pull_request_target",
+  pullRequest: implementationPull,
+  repository: "hogasi/sandbox",
+  senderLogin: "hogasi-ai[bot]",
+  senderType: "Bot",
+  ...overrides
+});
+for (const action of ["opened", "ready_for_review", "synchronize"]) {
+  test(`the implementation App's ${action} event requests PR review`, () => {
+    const decision = resolveRoute(pullEvent({ action }));
+    assert.equal(decision.role, "pr-reviewer");
+    assert.equal(decision.issue, "9");
+    assert.equal(decision.approval, "none");
+  });
+}
+for (const pullRequest of [
+  { ...implementationPull, draft: true },
+  { ...implementationPull, state: "closed" },
+  { ...implementationPull, user: { login: "owner" } },
+  {
+    ...implementationPull,
+    head: { ...implementationPull.head, repo: { full_name: "outside/fork" } }
+  },
+  {
+    ...implementationPull,
+    head: { ...implementationPull.head, ref: "unrelated" }
+  },
+  {
+    ...implementationPull,
+    base: { ...implementationPull.base, ref: "release" }
+  }
+]) {
+  test(`ignores ineligible PR ${JSON.stringify(pullRequest)}`, () => {
+    assert.equal(resolveRoute(pullEvent({ pullRequest })).role, "");
+  });
+}
+for (const sender of [
+  { senderLogin: "other[bot]", senderType: "Bot" },
+  { senderLogin: "reader", senderPermission: "read", senderType: "User" }
+]) {
+  test(`denies PR review from ${sender.senderLogin}`, () => {
+    assert.equal(resolveRoute(pullEvent(sender)).role, "");
+  });
+}
+test("an owner with write permission can mark the App PR ready for review", () => {
+  assert.equal(
+    resolveRoute(
+      pullEvent({
+        action: "ready_for_review",
+        senderLogin: "owner",
+        senderPermission: "write",
+        senderType: "User"
+      })
+    ).role,
+    "pr-reviewer"
+  );
+});
+test("untrusted PR events and review comments never trigger automatic repairs", () => {
+  assert.equal(resolveRoute(pullEvent({ eventName: "pull_request" })).role, "");
+  assert.equal(
+    resolveRoute(
+      pullEvent({ action: "submitted", eventName: "pull_request_review" })
+    ).role,
+    ""
+  );
+});
+test("PR review has independent Astra medium settings", () => {
+  assert.deepEqual(
+    settingsFor("pr-reviewer", { AI_PLAN_REVIEWER_EFFORT: "low" }),
+    { effort: "medium", model: "gpt-6-astra" }
+  );
+  assert.deepEqual(
+    settingsFor("pr-reviewer", { AI_PR_REVIEWER_EFFORT: "low" }),
+    { effort: "low", model: "gpt-6-astra" }
+  );
+  assert.throws(
+    () => settingsFor("pr-reviewer", { AI_PR_REVIEWER_MODEL: "opus" }),
+    /Unsupported Codex/
+  );
+});
+
+test("PR review remains disabled unless explicitly enrolled", () => {
+  const environment = {
+    AI_ROLES: "planner,plan-reviewer,implementer",
+    APP_LOGIN: "hogasi-ai[bot]",
+    EVENT_ACTION: "opened",
+    EVENT_DEFAULT_BRANCH: "main",
+    EVENT_NAME: "pull_request_target",
+    EVENT_PULL_REQUEST: JSON.stringify(implementationPull),
+    EVENT_SENDER: "hogasi-ai[bot]",
+    EVENT_SENDER_TYPE: "Bot",
+    GITHUB_REPOSITORY: "hogasi/sandbox"
+  };
+  assert.equal(decide(environment).role, "");
+  assert.equal(
+    decide({ ...environment, AI_ROLES: "pr-reviewer" }).role,
+    "pr-reviewer"
+  );
+});

@@ -9,6 +9,12 @@ on:
       issue:
         type: string
         default: ""
+      pull-request:
+        type: string
+        default: ""
+      builder-login:
+        type: string
+        default: ""
       model:
         type: string
         default: gpt-6-astra
@@ -66,32 +72,41 @@ jobs:
           node --input-type=module -e '
             import { settingsFor } from "./_tooling/agents/route.mjs";
             settingsFor("plan-reviewer", process.env);
-            if (!["smoke", "plan"].includes(process.env.REVIEW_MODE)) throw new Error("Invalid review mode");
+            if (!["smoke", "plan", "pr"].includes(process.env.REVIEW_MODE)) throw new Error("Invalid review mode");
           '
 
       - uses: actions/checkout@v7
-        if: inputs.mode == 'plan'
+        if: inputs.mode != 'smoke'
         with:
           repository: ${{ github.repository }}
+          fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
           path: _consumer
 
       - uses: actions/create-github-app-token@v3.2.0
         id: review-token
-        if: inputs.mode == 'plan'
+        if: inputs.mode != 'smoke'
         with:
           client-id: ${{ secrets.AI_REVIEW_APP_ID }}
           private-key: ${{ secrets.AI_REVIEW_APP_PRIVATE_KEY }}
           permission-contents: read
+          permission-actions: read
+          permission-pull-requests: ${{ inputs.mode == 'pr' && 'write' || '' }}
           permission-issues: write
           permission-metadata: read
 
-      - name: Capture the proposal and retract its previous pass
+      - name: Capture the review input
         id: prepare
-        if: inputs.mode == 'plan'
+        if: inputs.mode != 'smoke'
         env:
           GH_TOKEN: ${{ steps.review-token.outputs.token }}
+          REVIEW_MODE: ${{ inputs.mode }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BUILDER_LOGIN: ${{ inputs.builder-login }}
+          PULL_REQUEST: ${{ inputs.pull-request }}
+          MODEL: ${{ inputs.model }}
+          EFFORT: ${{ inputs.effort }}
           ISSUE: ${{ inputs.issue }}
           REVIEWER_LOGIN: ${{ steps.review-token.outputs.app-slug }}[bot]
           REVIEW_REPOSITORY: ${{ github.workspace }}/_consumer
@@ -99,14 +114,17 @@ jobs:
 
       - name: React to show the review started
         id: reaction
-        if: inputs.mode == 'plan'
+        if: steps.prepare.outputs.prepared == 'true'
         env:
           GH_TOKEN: ${{ steps.review-token.outputs.token }}
-          TARGET: issues/${{ inputs.issue }}
+          TARGET:
+            issues/${{ inputs.mode == 'pr' && inputs.pull-request ||
+            inputs.issue }}
         run: bash _tooling/agents/reaction.sh start
 
       - name: Restore the subscription login
         id: auth
+        if: inputs.mode == 'smoke' || steps.prepare.outputs.prepared == 'true'
         env:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
         run: node _tooling/agents/codex-auth.mjs restore
@@ -127,17 +145,17 @@ jobs:
             'Do not use tools. Reply with exactly OK.' >/dev/null 2>/dev/null
           test "$(cat "${RUNNER_TEMP}/codex-smoke-result")" = OK
 
-      - name: Review the proposal with Astra
-        id: plan-review
-        if: inputs.mode == 'plan'
+      - name: Review with Astra
+        id: review
+        if: steps.prepare.outputs.prepared == 'true'
         env:
           CODEX_HOME: ${{ runner.temp }}/codex-review-auth
           MODEL: ${{ inputs.model }}
           EFFORT: ${{ inputs.effort }}
         run: |
           set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/codex-plan"
-          cd "${RUNNER_TEMP}/codex-plan"
+          mkdir -p "${RUNNER_TEMP}/codex-input"
+          cd "${RUNNER_TEMP}/codex-input"
           codex exec --ignore-user-config --ignore-rules --ephemeral \
             --skip-git-repo-check --sandbox read-only \
             --disable shell_tool --disable unified_exec --disable hooks \
@@ -146,8 +164,8 @@ jobs:
             --disable skill_search -c 'web_search="disabled"' \
             --model "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" \
             --output-schema "${GITHUB_WORKSPACE}/_tooling/agents/review.schema.json" \
-            --output-last-message "${RUNNER_TEMP}/plan-review-result.json" \
-            - < "${RUNNER_TEMP}/plan-review-prompt.txt" >/dev/null 2>/dev/null
+            --output-last-message "${RUNNER_TEMP}/review-result.json" \
+            - < "${RUNNER_TEMP}/review-prompt.txt" >/dev/null 2>/dev/null
 
       # Mint this only after Codex exits; the model never receives update authority.
       - uses: actions/create-github-app-token@v3.2.0
@@ -172,9 +190,15 @@ jobs:
         run: node _tooling/agents/codex-auth.mjs clear
 
       - name: Publish the current verdict
-        if: inputs.mode == 'plan'
+        if: steps.prepare.outputs.prepared == 'true'
         env:
           GH_TOKEN: ${{ steps.review-token.outputs.token }}
+          REVIEW_MODE: ${{ inputs.mode }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BUILDER_LOGIN: ${{ inputs.builder-login }}
+          PULL_REQUEST: ${{ inputs.pull-request }}
+          MODEL: ${{ inputs.model }}
+          EFFORT: ${{ inputs.effort }}
           ISSUE: ${{ inputs.issue }}
           REVIEWER_LOGIN: ${{ steps.review-token.outputs.app-slug }}[bot]
         run: node _tooling/agents/review-run.mjs publish

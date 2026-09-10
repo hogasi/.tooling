@@ -2,8 +2,8 @@
 
 This is the checklist of intended GitHub settings, not proof that they are
 applied. Apply and verify them during enrollment; record the verification date.
-The AI files described in [stage 2](stage-2-ai-layer.md) exist now, but nothing
-in step 4 has been applied or verified against GitHub.
+The AI files described in [stage 2](stage-2-ai-layer.md) exist now. Sandbox
+evidence is recorded below; other repositories need their own enrollment.
 
 1. **Apply the org rules by hand.** Nothing here applies them for you.
 
@@ -66,9 +66,10 @@ in step 4 has been applied or verified against GitHub.
      fallback.
    - Set `AI_ROLES` as an Actions variable for enrolled repositories: `planner`
      first, then `planner,plan-reviewer`, then
-     `planner,plan-reviewer,implementer` once approval and CI are proven. Unset
-     means disabled. An org variable can supply a shared value; repository
-     overrides take precedence, so clearing the org value is not a global stop.
+     `planner,plan-reviewer,implementer` once approval and CI are proven, then
+     add `pr-reviewer` for PR feedback. Unset means disabled. An org variable
+     can supply a shared value; repository overrides take precedence, so
+     clearing the org value is not a global stop.
    - Claude defaults belong in `.tooling/.github/workflows/ai.yml`: planner
      `fable`, implementer `opus`, effort `high`. Their model and effort Actions
      variables override those defaults only in the consumer.
@@ -76,8 +77,9 @@ in step 4 has been applied or verified against GitHub.
      `medium` reasoning. `agents/route.mjs` validates the consumer's
      `AI_PLAN_REVIEWER_MODEL` and `AI_PLAN_REVIEWER_EFFORT`; the pilot accepts
      only Astra and `low` or `medium`. Clear obsolete `opus` or `high` review
-     overrides before enrollment. PR review through this runner is still
-     pending; do not enable hosted reviews as a fallback.
+     overrides before enrollment. PR review uses the same defaults, with
+     separate `AI_PR_REVIEWER_MODEL` and `AI_PR_REVIEWER_EFFORT` variables. No
+     hosted or API fallback is enabled.
    - Complete the private-consumer subscription setup below before enabling
      `plan-reviewer`. `AI_REVIEW_APP_LOGIN` defaults to `hogasi-review[bot]`;
      set it in the consumer only if using a differently named reviewer App.
@@ -111,6 +113,8 @@ in step 4 has been applied or verified against GitHub.
          types: [opened, edited, labeled]
        issue_comment:
          types: [created]
+       pull_request_target:
+         types: [opened, ready_for_review, synchronize]
 
      jobs:
        ai:
@@ -134,9 +138,9 @@ in step 4 has been applied or verified against GitHub.
      ```
 
    - Keep CI required and independent of AI enablement. To stop Claude writes
-     across repositories, suspend the App and cancel AI runs. Disable hosted
-     Codex reviews separately. Record credential rotation and renewal steps when
-     validating the sandbox.
+     across repositories, suspend the builder App and cancel AI runs. Suspend
+     the reviewer App and cancel review runs to stop reviewer activity. Record
+     credential rotation and renewal steps when validating the sandbox.
    - Install the **Renovate** GitHub App on the org (github.com/apps/renovate),
      all repositories. **Previously recorded as not installed**; recheck with
      `gh api orgs/hogasi/installations` before treating that snapshot as
@@ -148,12 +152,11 @@ in step 4 has been applied or verified against GitHub.
 
 ## Astra subscription preflight
 
-The first implementation step adds
-[the subscription check](../.github/workflows/codex-review.yml). It does not yet
-replace either reviewer. It proves `gpt-6-astra` at `medium` reasoning on a
-GitHub-hosted runner before we connect the issue and PR routes. Light is called
-`low` in the CLI; compare it with medium on known defects before changing
-defaults.
+The smoke mode of
+[the subscription runner](../.github/workflows/codex-review.yml) proves
+`gpt-6-astra` at `medium` reasoning on a GitHub-hosted runner before we connect
+the issue and PR routes. Light is called `low` in the CLI; compare it with
+medium on known defects before changing defaults.
 
 Use only a trusted **private** consumer, initially `hogasi/ai-sandbox`. Do not
 run account-auth automation in public `.tooling`, copy the login to other
@@ -229,17 +232,18 @@ Each queued run passed Astra medium access, credential write-back and cleanup.
 This completes the subscription preflight, including repeat use and queue
 behavior. It does not prove live token rotation or long-term renewal.
 
-The runner pins Codex `0.154.0`, uses an empty working directory, and reads no
-consumer code. It saves the current login even if the model fails, then deletes
-the runner's authentication directory. Model output is not logged. A failed step
-produces a failed run and a short recovery message; it never falls back to the
-API. A hard runner termination can prevent persistence. If a login is lost or
-revoked, stop queued runs, reseed it and repeat this check.
+The runner pins Codex `0.154.0` and uses an empty working directory. Smoke mode
+reads no consumer code; review modes receive committed text as input. It saves
+the current login even if the model fails, then deletes the runner's
+authentication directory. Model output is not logged. A failed step produces a
+failed run and a short recovery message; it never falls back to the API. A hard
+runner termination can prevent persistence. If a login is lost or revoked, stop
+queued runs, reseed it and repeat this check.
 
 ## Enable issue-plan review
 
-The plan-review route is implemented locally; its live verdict tests remain
-pending. After merging and pinning this version in the consumer AI caller:
+The plan-review route passed the sandbox verdict and approval tests below. For a
+new consumer, pin the tooling version in its AI caller and:
 
 1. Explicitly map the three review secret names through the AI caller as shown
    above. Keep their values only in the `codex-review` environment. Discovery
@@ -268,9 +272,71 @@ repository SHA before publishing. Approval repeats these checks, including after
 the implementation queue. GitHub cannot atomically update comments and labels,
 so the authenticated record and current inputs are authoritative. A failed run
 stays unreviewed; inspect its Actions error and remove/reapply `ready` after
-fixing the cause. Credential persistence still runs after a model failure.
-Long-term token renewal and the actual review quality still need live
-validation. The next implementation step is the Astra PR-review route.
+fixing the cause. Credential persistence still runs after a model failure. On
+September 10, 2026,
+[sandbox issue #9](https://github.com/hogasi/ai-sandbox/issues/9) proved these
+paths:
+
+- [34489967879](https://github.com/hogasi/ai-sandbox/actions/runs/34489967879):
+  rejected a test-only proposal that also required a source and documentation
+  change.
+- [34490343652](https://github.com/hogasi/ai-sandbox/actions/runs/34490343652):
+  passed the corrected proposal.
+- [34490627619](https://github.com/hogasi/ai-sandbox/actions/runs/34490627619):
+  rejected owner approval after the body changed; implementation was skipped.
+- [34490912218](https://github.com/hogasi/ai-sandbox/actions/runs/34490912218):
+  passed a fresh review of the changed proposal.
+- [34491101961](https://github.com/hogasi/ai-sandbox/actions/runs/34491101961):
+  accepted owner approval and opened
+  [PR #10](https://github.com/hogasi/ai-sandbox/pull/10). Its independent
+  [Tests run](https://github.com/hogasi/ai-sandbox/actions/runs/34491349999)
+  passed.
+
+An actual proposal change during a queued/model review and long-term token
+renewal still need live validation.
+
+## Enable PR review
+
+The PR route is implemented; its live sandbox validation remains pending. After
+merging this tooling version:
+
+1. Update the consumer caller's full SHA and add the three `pull_request_target`
+   event types shown above. Merge that caller onto the default branch.
+2. Add `pr-reviewer` to the consumer's `AI_ROLES`. Existing reviewer secrets and
+   App grants suffice. The full enrollment value is
+   `planner,plan-reviewer,implementer,pr-reviewer`.
+3. Open an implementation PR, push a repair, or mark an existing draft ready.
+   For sandbox PR #10, convert it to draft and then mark it ready to exercise
+   the new route. Confirm a `hogasi-review` COMMENT review names its exact head.
+4. Rerun the successful workflow: identical base, head, proposal, model and
+   effort must skip the model call and produce no duplicate review.
+5. Exercise a known defect, an owner-requested `@claude` repair and a new-head
+   review. Verify required CI independently, then merge as owner. Also test a
+   stale review and plan/PR runs queued together before broader enrollment.
+
+Only open, non-draft, same-repository PRs authored by the implementation App on
+`claude/issue-<n>` against the default branch qualify. Events must come from
+that App or a human with repository write/admin permission. The linked issue
+must retain its exact owner-approved body and approval labels. PR feedback uses
+that approved scope; it does not require the old plan-review base to equal the
+new base. Implementation and repair approval gates still require a current plan
+pass.
+
+The runner captures the three-dot diff, committed base and head files, approved
+proposal, PR comments, prior reviews and Actions results for that head. The
+combined prompt has the same 512 KiB limit; submodules fail and binary contents
+are unavailable. It checks out the trusted base, executes no PR scripts and runs
+Codex without tools. Snapshot collection disables Git diff drivers and text
+conversion. CI is a captured observation: pending or missing runs do not count
+as passed tests, and CI completion alone does not trigger another review.
+
+Before publication, trusted code rechecks base, head and approval. Changed input
+fails visibly; retry using a current PR event. Reviews are COMMENT feedback, not
+merge approval or an automatic repair request. The owner requests repairs with
+`@claude`; new commits trigger another review. Smoke, plan and PR modes share
+the same subscription queue and credential persistence. GitHub cannot atomically
+compare PR state and post a review; every review includes its exact commit and
+proposal digest so later changes cannot make it current evidence.
 
 Sources:
 [Codex account auth in CI](https://learn.chatgpt.com/docs/auth/ci-cd-auth),

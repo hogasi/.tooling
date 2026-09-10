@@ -39,7 +39,8 @@ jobs:
     outputs:
       approval: ${{ steps.decide.outputs.approval }}
       effort: ${{ steps.decide.outputs.effort }}
-      issue: ${{ steps.work-key.outputs.issue }}
+      issue: ${{ steps.decide.outputs.issue || steps.work-key.outputs.issue }}
+      builder_login: ${{ steps.app-token.outputs.app-slug }}[bot]
       model: ${{ steps.decide.outputs.model }}
       role: ${{ steps.decide.outputs.role }}
     steps:
@@ -96,6 +97,8 @@ jobs:
           AI_PLANNER_MODEL: ${{ vars.AI_PLANNER_MODEL }}
           AI_PLAN_REVIEWER_EFFORT: ${{ vars.AI_PLAN_REVIEWER_EFFORT }}
           AI_PLAN_REVIEWER_MODEL: ${{ vars.AI_PLAN_REVIEWER_MODEL }}
+          AI_PR_REVIEWER_MODEL: ${{ vars.AI_PR_REVIEWER_MODEL }}
+          AI_PR_REVIEWER_EFFORT: ${{ vars.AI_PR_REVIEWER_EFFORT }}
           AI_ROLES: ${{ vars.AI_ROLES }}
           # The App's own login, so the router can tell the planner's `ready`
           # label from every other bot event, which it still refuses.
@@ -112,6 +115,8 @@ jobs:
           EVENT_LABEL: ${{ github.event.label.name }}
           EVENT_LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EVENT_PULL_REQUEST: ${{ toJSON(github.event.pull_request) }}
           EVENT_SENDER: ${{ github.event.sender.login }}
           EVENT_SENDER_PERMISSION: ${{ steps.sender.outputs.permission }}
           EVENT_SENDER_TYPE: ${{ github.event.sender.type }}
@@ -123,7 +128,9 @@ jobs:
       # which for a pull request means reading it back off the branch name.
       - name: Resolve the work key
         id: work-key
-        if: steps.decide.outputs.role != ''
+        if:
+          steps.decide.outputs.role != '' && steps.decide.outputs.role !=
+          'pr-reviewer'
         env:
           GH_TOKEN: ${{ github.token }}
           IS_PULL_REQUEST: ${{ github.event.issue.pull_request != null }}
@@ -346,6 +353,27 @@ jobs:
     with:
       mode: plan
       issue: ${{ needs.route.outputs.issue }}
+      model: ${{ needs.route.outputs.model }}
+      effort: ${{ needs.route.outputs.effort }}
+    secrets:
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      AI_REVIEW_APP_ID: ${{ secrets.AI_REVIEW_APP_ID }}
+      AI_REVIEW_APP_PRIVATE_KEY: ${{ secrets.AI_REVIEW_APP_PRIVATE_KEY }}
+
+  pr-review:
+    name: PR review
+    needs: route
+    if:
+      needs.route.result == 'success' && needs.route.outputs.role ==
+      'pr-reviewer'
+    uses: ./.github/workflows/codex-review.yml
+    permissions:
+      contents: read
+    with:
+      mode: pr
+      issue: ${{ needs.route.outputs.issue }}
+      pull-request: ${{ format('{0}', github.event.pull_request.number) }}
+      builder-login: ${{ needs.route.outputs.builder_login }}
       model: ${{ needs.route.outputs.model }}
       effort: ${{ needs.route.outputs.effort }}
     secrets:
