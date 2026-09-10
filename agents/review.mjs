@@ -1,10 +1,9 @@
-import { createHash } from "node:crypto";
-
 import { githubRequest } from "./github.mjs";
+import { latestComment, readComments, readProposal } from "./proposal.mjs";
+import { setStatus } from "./state.mjs";
 
 const MAX_VERDICT_LENGTH = 60_000;
 const MARKER = "<!-- hogasi-review plan ";
-const digestOf = (body) => createHash("sha256").update(body).digest("hex");
 const issuePath = (context) =>
   `repos/${context.repository}/issues/${context.issueNumber}`;
 
@@ -15,23 +14,16 @@ export function beginReview(context, callGitHub = githubRequest) {
   validateContext(context);
   validateRun(context);
   const issue = readReadyIssue(context, callGitHub);
-  if (
-    issue.body !== context.eventBody ||
-    currentSha(context, callGitHub) !== context.sha
-  ) {
-    throw new Error("Review input changed while queued; reapply ready");
+  const proposal = readProposal(context, callGitHub);
+  if (currentSha(context, callGitHub) !== context.sha) {
+    throw new Error("Review input changed while queued; reapply in review");
   }
   const snapshot = {
-    digest: digestOf(issue.body),
+    digest: proposal.digest,
+    proposal: proposal.id,
     run: `${context.runId}.${context.attempt}`,
     sha: context.sha
   };
-  if (issue.labels.some((label) => label.name === "reviewed")) {
-    callGitHub({
-      method: "DELETE",
-      path: `${issuePath(context)}/labels/reviewed`
-    });
-  }
   const comments = readComments(context, callGitHub);
   postRecord(context, callGitHub, {
     message:
@@ -39,7 +31,8 @@ export function beginReview(context, callGitHub = githubRequest) {
     snapshot,
     status: "pending"
   });
-  return { comments, issue, snapshot };
+  setStatus(context, "in review", callGitHub);
+  return { comments, issue, proposal, snapshot };
 }
 
 /**
@@ -48,13 +41,14 @@ Publish only if the proposal and repository still match the reviewed snapshot.
 export function publishReview(context, callGitHub = githubRequest) {
   validateContext(context);
   const verdict = validateVerdict(context.verdict);
-  const issue = readReadyIssue(context, callGitHub);
+  readReadyIssue(context, callGitHub);
   const { snapshot } = context;
+  const proposal = readProposal(context, callGitHub);
   if (
-    digestOf(issue.body) !== snapshot.digest ||
+    proposal.digest !== snapshot.digest ||
     currentSha(context, callGitHub) !== snapshot.sha
   ) {
-    throw new Error("Review input changed during execution; reapply ready");
+    throw new Error("Review input changed during execution; reapply in review");
   }
   if (requirePendingReview(context, callGitHub) !== "pending") {
     return;
@@ -68,7 +62,11 @@ export function publishReview(context, callGitHub = githubRequest) {
     snapshot,
     status: verdict.verdict
   });
-  updateLabels(context, callGitHub, verdict.verdict);
+  setStatus(
+    context,
+    verdict.verdict === "pass" ? "approved" : "changes requested",
+    callGitHub
+  );
 }
 
 /**
@@ -77,15 +75,17 @@ Require the configured reviewer App's current pass, not a label or copied text.
 export function requirePlanReview(context, callGitHub = githubRequest) {
   validateContext(context);
   const record = latestRecord(context, callGitHub);
+  const proposal = readProposal(context, callGitHub);
   if (
     record?.status !== "pass" ||
-    record.digest !== digestOf(context.issue.body) ||
-    record.sha !== currentSha(context, callGitHub)
+    record.digest !== proposal.digest ||
+    record.proposal !== proposal.id
   ) {
     throw new Error(
-      "No current passing plan review; remove and reapply ready to request review"
+      "No current passing plan review for this proposal revision"
     );
   }
+  return record;
 }
 
 /**
@@ -135,17 +135,18 @@ function isValidText(text) {
 }
 
 function latestRecord(context, callGitHub) {
-  const latest = readComments(context, callGitHub)
-    .filter(
-      (comment) =>
-        comment.user?.login === context.reviewerLogin &&
-        comment.body?.startsWith(MARKER)
-    )
-    .toSorted((left, right) => right.id - left.id)[0];
+  const latest = latestComment({
+    comments: readComments(context, callGitHub),
+    login: context.reviewerLogin,
+    marker: MARKER
+  });
   if (!latest) {
     return;
   }
-  return parseRecord(latest.body.split("\n", 1)[0]);
+  return {
+    ...parseRecord(latest.body.split("\n", 1)[0]),
+    updatedAt: latest.updated_at
+  };
 }
 
 function parseRecord(line) {
@@ -156,37 +157,24 @@ function parseRecord(line) {
   } catch {
     throw new Error("Malformed review record");
   }
-  if (
-    !line.endsWith(" -->") ||
-    !/^[a-f0-9]{64}$/.test(record?.digest) ||
-    !/^[a-f0-9]{40}$/.test(record.sha) ||
-    !/^[1-9]\d*\.[1-9]\d*$/.test(record.run) ||
-    !["changes_requested", "pass", "pending"].includes(record.status)
-  ) {
-    throw new Error("Malformed review record");
-  }
-  return record;
+  return validateRecord(line, record);
 }
 
 function postRecord(context, callGitHub, { message, snapshot, status }) {
+  const existing = latestComment({
+    comments: readComments(context, callGitHub),
+    login: context.reviewerLogin,
+    marker: MARKER
+  });
   callGitHub({
     body: {
-      body: `${MARKER}${JSON.stringify({ ...snapshot, status })} -->\n${message}\n\n[Review run](https://github.com/${context.repository}/actions/runs/${context.runId}) · Repository commit: \`${snapshot.sha}\``
+      body: `${MARKER}${JSON.stringify({ ...snapshot, status })} -->\n${message}\n\n[Proposal revision](https://github.com/${context.repository}/issues/${context.issueNumber}#issuecomment-${snapshot.proposal}) · [Review run](https://github.com/${context.repository}/actions/runs/${context.runId}) · Repository commit: \`${snapshot.sha}\``
     },
-    method: "POST",
-    path: `${issuePath(context)}/comments`
+    method: existing ? "PATCH" : "POST",
+    path: existing
+      ? `repos/${context.repository}/issues/comments/${existing.id}`
+      : `${issuePath(context)}/comments`
   });
-}
-
-function readComments(context, callGitHub) {
-  const pages = callGitHub({
-    paginate: true,
-    path: `${issuePath(context)}/comments`
-  });
-  if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) {
-    throw new Error("Malformed comment pages");
-  }
-  return pages.flat();
 }
 
 function readReadyIssue(context, callGitHub) {
@@ -200,11 +188,12 @@ function readReadyIssue(context, callGitHub) {
   ) {
     throw new Error("Malformed or closed review issue");
   }
-  if (issue.labels.every((label) => label.name !== "ready")) {
-    throw new Error("Proposal is no longer ready");
+  if (issue.labels.every((label) => label.name !== "in review")) {
+    throw new Error("Proposal is no longer in review");
   }
   return issue;
 }
+
 function requireConsistentVerdict(value) {
   const isPass = value.verdict === "pass" && value.findings.length === 0;
   const hasFindings =
@@ -225,21 +214,6 @@ function requirePendingReview(context, callGitHub) {
   }
   return latest.status;
 }
-function updateLabels(context, callGitHub, verdict) {
-  // silviu: GitHub has no atomic comment-and-label update; approval independently checks the digest and SHA.
-  if (verdict === "pass") {
-    callGitHub({
-      body: { labels: ["reviewed"] },
-      method: "POST",
-      path: `${issuePath(context)}/labels`
-    });
-  } else {
-    callGitHub({
-      method: "DELETE",
-      path: `${issuePath(context)}/labels/ready`
-    });
-  }
-}
 function validateContext(context) {
   if (
     !/^[\w-]+\/[\w.-]+$/.test(context.repository) ||
@@ -248,6 +222,21 @@ function validateContext(context) {
   ) {
     throw new Error("Invalid review context");
   }
+}
+function validateRecord(line, record) {
+  if (
+    !line.endsWith(" -->") ||
+    !/^[a-f0-9]{64}$/.test(record?.digest) ||
+    !/^[a-f0-9]{40}$/.test(record.sha) ||
+    !/^[1-9]\d*\.[1-9]\d*$/.test(record.run) ||
+    !["changes_requested", "pass", "pending"].includes(record.status)
+  ) {
+    throw new Error("Malformed review record");
+  }
+  if (!Number.isSafeInteger(record.proposal)) {
+    throw new TypeError("Malformed proposal ID");
+  }
+  return record;
 }
 
 function validateRun(context) {

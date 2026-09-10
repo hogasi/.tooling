@@ -158,7 +158,8 @@ jobs:
         env:
           APPROVAL: ${{ steps.decide.outputs.approval }}
           EFFORT: ${{ steps.decide.outputs.effort }}
-          ISSUE: ${{ steps.work-key.outputs.issue }}
+          ISSUE:
+            ${{ steps.decide.outputs.issue || steps.work-key.outputs.issue }}
           MODEL: ${{ steps.decide.outputs.model }}
           REASON: ${{ steps.decide.outputs.reason }}
           ROLE: ${{ steps.decide.outputs.role }}
@@ -201,6 +202,7 @@ jobs:
           # Administration read is only for reading back the requesting actor's
           # repository permission; the collaborator endpoint needs it.
           permission-administration: read
+          permission-actions: read
           permission-contents: read
           permission-issues: write
           permission-metadata: read
@@ -285,6 +287,12 @@ jobs:
           permission-metadata: read
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
 
+      - name: Show discovery status
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE: ${{ needs.route.outputs.issue }}
+        run: node "${RUNNER_TEMP}/tooling/agents/state.mjs" learning
+
       - name: Build the planner prompt
         id: prompt
         env:
@@ -352,6 +360,7 @@ jobs:
       issues: read
     with:
       mode: plan
+      builder-login: ${{ needs.route.outputs.builder_login }}
       issue: ${{ needs.route.outputs.issue }}
       model: ${{ needs.route.outputs.model }}
       effort: ${{ needs.route.outputs.effort }}
@@ -454,6 +463,7 @@ jobs:
         with:
           client-id: ${{ secrets.AI_APP_ID }}
           permission-administration: read
+          permission-actions: read
           permission-contents: read
           permission-issues: read
           permission-metadata: read

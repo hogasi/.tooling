@@ -83,7 +83,7 @@ evidence is recorded below; other repositories need their own enrollment.
    - Complete the private-consumer subscription setup below before enabling
      `plan-reviewer`. `AI_REVIEW_APP_LOGIN` defaults to `hogasi-review[bot]`;
      set it in the consumer only if using a differently named reviewer App.
-     Approval trusts records from that login, never the `reviewed` label alone.
+     Approval trusts records from that login, never the `approved` label alone.
    - Create the `hogasi-ai` GitHub App with webhook **off**. Grant contents,
      pull requests, and issues read/write, plus metadata, actions and
      administration read — actions read is how a repair reads its own failing
@@ -99,7 +99,7 @@ evidence is recorded below; other repositories need their own enrollment.
      deprecated. Grant both secrets to each enrolled repo. The workflow mints a
      token per job, scoped to that job's permissions.
    - Add the thin AI caller below, explicitly mapping the six named secrets, and
-     provision `ready`, `reviewed` and `ready for dev` labels. Add
+     provision the v2 labels below. Add
      [review-guidelines.md](../agents/review-guidelines.md) to the consumer's
      `AGENTS.md`. Complete this again for new repositories; copying a workflow
      does not grant secret access or connect Codex automatically.
@@ -240,39 +240,35 @@ failed run and a short recovery message; it never falls back to the API. A hard
 runner termination can prevent persistence. If a login is lost or revoked, stop
 queued runs, reseed it and repeat this check.
 
-## Enable issue-plan review
+## Workflow v2 migration
 
-The plan-review route passed the sandbox verdict and approval tests below. For a
-new consumer, pin the tooling version in its AI caller and:
+Delivery 1 changes the proposal and approval format. Migrate one private
+consumer at a time; do not mix legacy approval with the checkpoint format.
 
-1. Explicitly map the three review secret names through the AI caller as shown
-   above. Keep their values only in the `codex-review` environment. Discovery
-   and implementation jobs never receive those credentials.
-2. Set `AI_ROLES=planner,plan-reviewer`; remove old Claude reviewer overrides.
-3. Exercise a deliberately defective proposal and verify findings remove `ready`
-   without applying `reviewed`. Correct it and reapply `ready` to check a
-   passing review, then owner approval.
-4. Edit a passed proposal and verify approval is rejected. Reapply `ready` to
-   obtain a review for the new body. A default-branch commit also invalidates
-   the old pass. Test a queued review whose proposal changes before completion.
-5. Enable `implementer` only after these checks pass. Existing label-only Claude
-   reviews need a fresh Astra pass before new implementation or repair runs.
+1. Pause AI_ROLES and finish active writers before updating the caller to this
+   tooling SHA. Keep independent CI enabled.
+2. Provision learning, in review, changes requested, approved, in development,
+   blocked, and ready for dev labels. Existing reviewer secrets/grants suffice.
+   The builder approval token requests Actions read to date the owner event.
+3. Enable planner and plan-reviewer. For existing issues, remove ready for dev
+   and ask the planner to migrate the existing proposal. It preserves the body,
+   creates a checkpoint and updates its planning summary. Remove legacy
+   ready/reviewed labels; they authorize nothing in this version.
+4. Check the original description is unchanged. Correct scope through a new
+   checkpoint with revision rationale. Retain the old checkpoint and maintain
+   only one planning summary and one reviewer summary.
+5. After a pass, enable implementer and apply ready for dev. Verify summary
+   edits retain authorization, while checkpoint edits, replacement and
+   authorization removal/reapplication require fresh authorization.
+6. Advance main with an unrelated change and request a scoped repair. Confirm no
+   scope reapproval is needed. Test stale events and queued scope changes.
 
-Plan reviews share the smoke test's subscription queue. The runner supplies the
-full thread and committed repository text as data, with shell, browser and
-execution tools disabled. It runs no repository scripts or dependency installs.
-The pilot rejects prompts over 512 KiB and repositories with submodules; binary
-files are listed as unavailable evidence. Add scoped read-only retrieval before
-enrolling larger repositories. Do not increase the limit without checking the
-model's context budget.
+Reviews still reject stale code snapshots before publication. Owner approval
+binds to the checkpoint, not every main commit. Legacy body-based approvals are
+rejected. Automatic corrections and stacks follow in later deliveries; see
+[stage 2](stage-2-ai-layer.md).
 
-A pending reviewer record and removal of `reviewed` precede model execution.
-Trusted code validates the JSON verdict and rechecks the proposal digest and
-repository SHA before publishing. Approval repeats these checks, including after
-the implementation queue. GitHub cannot atomically update comments and labels,
-so the authenticated record and current inputs are authoritative. A failed run
-stays unreviewed; inspect its Actions error and remove/reapply `ready` after
-fixing the cause. Credential persistence still runs after a model failure. On
+The following evidence predates v2 migration and proves the earlier workflow. On
 September 10, 2026,
 [sandbox issue #9](https://github.com/hogasi/ai-sandbox/issues/9) proved these
 paths:
@@ -317,10 +313,10 @@ merging this tooling version:
 Only open, non-draft, same-repository PRs authored by the implementation App on
 `claude/issue-<n>` against the default branch qualify. Events must come from
 that App or a human with repository write/admin permission. The linked issue
-must retain its exact owner-approved body and approval labels. PR feedback uses
-that approved scope; it does not require the old plan-review base to equal the
-new base. Implementation and repair approval gates still require a current plan
-pass.
+must retain its exact owner-approved checkpoint and active authorization. PR
+feedback uses that approved scope; it does not require the old plan-review base
+to equal the new base. Implementation and repair approval gates still require a
+current plan pass.
 
 The runner captures the three-dot diff, committed base and head files, approved
 proposal, PR comments, prior reviews and Actions results for that head. The

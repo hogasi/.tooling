@@ -1,227 +1,259 @@
-import { createHash } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { githubRequest } from "./github.mjs";
+import { latestComment, readComments, readProposal } from "./proposal.mjs";
 import { requirePlanReview } from "./review.mjs";
+import { readDevEvent, setStatus } from "./state.mjs";
 
-const marker = "<!-- hogasi-ai approval";
-const APPROVAL_LABELS = ["ready", "reviewed", "ready for dev"];
-const DEV_LABEL = "ready for dev";
-const digestOf = (body) => createHash("sha256").update(body).digest("hex");
+const MARKER = "<!-- hogasi-ai authorization ";
 
 export function applyApproval(context, callGitHub = githubRequest) {
   validateContext(context);
-  requireAuthority(context, callGitHub);
+  requireAuthority(context, context.actor, callGitHub);
   const issue = readIssue(context, callGitHub);
   if (context.mode === "clear") {
-    return clearApproval(context, callGitHub, issue);
+    clearApproval(context, issue, callGitHub);
+    return "";
   }
-  requireLabels(issue);
-  requirePlanReview({ ...context, issue }, callGitHub);
-  return context.mode === "record"
-    ? recordApproval(context, callGitHub, issue)
-    : verifyApproval(context, callGitHub, issue);
+  const proposal = readProposal(context, callGitHub);
+  requireDevLabel(issue);
+  const event = readDevEvent(context, callGitHub);
+  if (context.mode === "record") {
+    recordApproval(context, { event, issue, proposal }, callGitHub);
+  } else {
+    const approval = verifyApproval(context, { event, proposal }, callGitHub);
+    requireAuthority(context, approval.actor, callGitHub);
+  }
+  return proposal.digest;
 }
 
 /**
-Read the authenticated owner-approved proposal without granting implementation authority.
-PR review checks the code against this proposal; it does not reapprove a new base commit.
+PR feedback reads approved scope without granting new implementation authority.
 */
 export function readApprovedProposal(context, callGitHub = githubRequest) {
-  validateProposalContext(context);
+  validateContext(context);
   const issue = readIssue(context, callGitHub);
-  if (issue.state !== "open" || issue.pull_request) {
-    throw new Error("The approved proposal is no longer an open issue");
-  }
-  requireLabels(issue);
-  const digest = verifyApproval(context, callGitHub, issue);
-  return { digest, issue };
+  requireDevLabel(issue);
+  const proposal = readProposal(context, callGitHub);
+  const event = readDevEvent(context, callGitHub);
+  verifyApproval(context, { event, proposal }, callGitHub);
+  return { digest: proposal.digest, issue, proposal };
 }
 
-function clearApproval(context, callGitHub, issue) {
-  const path = `repos/${context.repository}/issues/${context.issueNumber}`;
-  if (issue.labels.some((label) => label.name === DEV_LABEL)) {
+function clearApproval(context, issue, callGitHub) {
+  if (issue.labels.some((label) => label.name === "ready for dev")) {
     callGitHub({
       method: "DELETE",
-      path: `${path}/labels/${encodeURIComponent(DEV_LABEL)}`
+      path: `repos/${context.repository}/issues/${context.issueNumber}/labels/ready%20for%20dev`
     });
   }
-  callGitHub({
-    body: {
-      body: `${marker} cleared -->\nApproval revoked. Approve the current proposal to implement it.`
-    },
-    method: "POST",
-    path: `${path}/comments`
-  });
-  return "";
+  postApproval(context, { cleared: true }, callGitHub);
+  setStatus(context, "learning", callGitHub);
 }
 
 function latestApproval(context, callGitHub) {
-  const pages = callGitHub({
-    paginate: true,
-    path: `repos/${context.repository}/issues/${context.issueNumber}/comments`
+  const latest = latestComment({
+    comments: readComments(context, callGitHub),
+    login: context.appLogin,
+    marker: MARKER
   });
-  if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) {
-    throw new Error("Malformed comment pages");
-  }
-  const records = pages
-    .flat()
-    .filter(
-      (comment) =>
-        comment.user?.login === context.appLogin &&
-        comment.body?.startsWith(marker)
-    );
-  const latest = records.toSorted((left, right) => right.id - left.id)[0];
   if (!latest) {
     return;
   }
-  if (latest.body.startsWith(`${marker} cleared -->`)) {
-    return { cleared: true };
-  }
-  const match = latest.body.match(
-    // eslint-disable-next-line security/detect-unsafe-regex -- Fixed delimiters bound the digest and optional numeric run; no ambiguous alternatives.
-    /^<!-- hogasi-ai approval sha256=([0-9a-f]{64})(?: run=([1-9]\d*))? -->/
-  );
-  if (!match) {
+  const line = latest.body.split("\n", 1)[0];
+  if (!line.endsWith(" -->")) {
     throw new Error("Malformed approval record");
   }
-  return { digest: match[1] };
+  const record = JSON.parse(line.slice(MARKER.length, -4));
+  if (record.cleared === true) {
+    return record;
+  }
+  if (
+    !/^[a-f0-9]{64}$/.test(record.digest) ||
+    !Number.isSafeInteger(record.proposal) ||
+    !Number.isSafeInteger(record.event) ||
+    !/^[\w-]+$/.test(record.actor)
+  ) {
+    throw new Error("Malformed approval record");
+  }
+  return record;
 }
 
 function main() {
-  const environment = process.env;
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- The Actions runner supplies this event file path.
-  const event = JSON.parse(readFileSync(environment.GITHUB_EVENT_PATH, "utf8"));
+  const env = process.env;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- The Actions runner supplies this event file.
+  const event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, "utf8"));
   const digest = applyApproval({
-    actor: environment.ACTOR,
-    appLogin: environment.APP_LOGIN,
+    actor: env.ACTOR,
+    appLogin: env.APP_LOGIN,
     event,
-    expectedDigest: environment.EXPECTED_DIGEST,
-    issueNumber: environment.ISSUE,
-    mode: environment.MODE,
-    repository: environment.GITHUB_REPOSITORY,
-    reviewerLogin: environment.REVIEWER_LOGIN,
-    runId: environment.GITHUB_RUN_ID
+    expectedDigest: env.EXPECTED_DIGEST,
+    issueNumber: env.ISSUE,
+    mode: env.MODE,
+    repository: env.GITHUB_REPOSITORY,
+    reviewerLogin: env.REVIEWER_LOGIN,
+    runId: env.GITHUB_RUN_ID
   });
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- The Actions runner supplies this output file path.
-  appendFileSync(environment.GITHUB_OUTPUT, `digest=${digest}\n`);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- The Actions runner supplies this output file.
+  appendFileSync(env.GITHUB_OUTPUT, `digest=${digest}\n`);
 }
 
+function postApproval(context, record, callGitHub) {
+  callGitHub({
+    body: {
+      body: `${MARKER}${JSON.stringify(record)} -->\n${record.cleared ? "Authorization revoked." : `Proposal revision #${record.proposal} authorized by @${record.actor}.`}`
+    },
+    method: "POST",
+    path: `repos/${context.repository}/issues/${context.issueNumber}/comments`
+  });
+}
 function readIssue(context, callGitHub) {
   const issue = callGitHub({
     path: `repos/${context.repository}/issues/${context.issueNumber}`
   });
   if (
     issue?.number !== Number(context.issueNumber) ||
-    typeof issue.body !== "string" ||
+    issue.state !== "open" ||
+    issue.pull_request ||
     !Array.isArray(issue.labels)
   ) {
-    throw new Error("Malformed issue response");
+    throw new Error("Malformed or closed issue");
   }
   return issue;
 }
-
-function recordApproval(context, callGitHub, issue) {
-  requireApprovalEvent(context, issue);
-  if (!/^[1-9]\d*$/.test(context.runId)) {
-    throw new Error("Invalid approval run ID");
-  }
-  const digest = digestOf(context.event.issue.body);
-  if (latestApproval(context, callGitHub)?.digest !== digest) {
-    callGitHub({
-      body: {
-        body: `${marker} sha256=${digest} run=${context.runId} -->\nPlan approved by @${context.actor} — implementation started. Editing the plan clears this approval.`
+function recordApproval(context, { event, issue, proposal }, callGitHub) {
+  const review = requirePlanReview(context, callGitHub);
+  requireApprovalEvent(context, { event, issue, proposal, review }, callGitHub);
+  const existing = latestApproval(context, callGitHub);
+  if (existing?.digest !== proposal.digest || existing.event !== event.id) {
+    postApproval(
+      context,
+      {
+        actor: context.actor,
+        digest: proposal.digest,
+        event: event.id,
+        proposal: proposal.id
       },
-      method: "POST",
-      path: `repos/${context.repository}/issues/${context.issueNumber}/comments`
-    });
+      callGitHub
+    );
   }
-  return digest;
+  setStatus(context, "in development", callGitHub);
 }
-
-function requireApprovalEvent(context, issue) {
-  const event = context.event;
+function requireApprovalEvent(
+  context,
+  { event, issue, proposal, review },
+  callGitHub
+) {
+  const source = context.event ?? {};
   if (
-    event?.action !== "labeled" ||
-    event.label?.name !== DEV_LABEL ||
-    event.issue?.number !== issue.number
+    source.action !== "labeled" ||
+    source.label?.name !== "ready for dev" ||
+    source.issue?.number !== issue.number
   ) {
     throw new Error("Invalid approval event");
   }
-  if (event.issue.body !== issue.body) {
-    throw new Error("The proposal changed since the approval event");
-  }
+  requireReviewedEvent(context, { event, issue, proposal, review }, callGitHub);
 }
-
-function requireAuthority(context, callGitHub) {
+function requireAuthority(context, actor, callGitHub) {
+  if (!/^[\w-]+$/.test(actor)) {
+    throw new Error("Invalid owner identity");
+  }
   const result = callGitHub({
-    path: `repos/${context.repository}/collaborators/${context.actor}/permission`
+    path: `repos/${context.repository}/collaborators/${actor}/permission`
   });
   if (!["admin", "write"].includes(result?.permission)) {
-    throw new Error(
-      `@${context.actor} needs repository write access to ${context.mode} approval`
-    );
+    throw new Error("Owner needs repository write access");
   }
 }
-
-function requireLabels(issue) {
-  const labels = new Set(issue.labels.map((label) => label.name));
-  const missing = APPROVAL_LABELS.filter((label) => !labels.has(label));
-  if (missing.length > 0) {
-    throw new Error(
-      `The proposal is missing the ${missing.join(" and ")} label`
-    );
+function requireDevLabel(issue) {
+  if (issue.labels.every((label) => label.name !== "ready for dev")) {
+    throw new Error("Missing ready for dev label");
   }
 }
-
-function validateContext(context) {
-  validateProposalContext(context);
+function requireReviewBeforeApproval(
+  context,
+  { event, proposal, review },
+  callGitHub
+) {
+  const run = callGitHub({
+    path: `repos/${context.repository}/actions/runs/${context.runId}`
+  });
+  const dates = [
+    proposal.createdAt,
+    review.updatedAt,
+    event.created_at,
+    run.created_at
+  ].map((value) => Date.parse(value));
   if (
-    typeof context.actor !== "string" ||
-    !/^[\w-]+$/.test(context.actor) ||
+    dates.some((date) => !Number.isFinite(date)) ||
+    dates[0] >= dates[2] ||
+    dates[1] >= dates[2] ||
+    dates[2] > dates[3]
+  ) {
+    throw new Error(
+      "Proposal or review changed after the approval event; remove and reapply ready for dev"
+    );
+  }
+}
+function requireReviewedEvent(
+  context,
+  { event, issue, proposal, review },
+  callGitHub
+) {
+  if (event.actor?.login !== context.actor) {
+    throw new Error("Invalid approval actor");
+  }
+  if (
+    issue.labels.every((label) => label.name !== "approved") &&
+    latestApproval(context, callGitHub)?.event !== event.id
+  ) {
+    throw new Error(
+      "The proposal needs approved status before owner authorization"
+    );
+  }
+  requireReviewBeforeApproval(context, { event, proposal, review }, callGitHub);
+}
+function validateContext(context) {
+  if (!/^[\w-]+\/[\w.-]+$/.test(context.repository)) {
+    throw new Error("Invalid repository");
+  }
+  if (
+    !/^[1-9]\d*$/.test(context.issueNumber) ||
     !/^[\w-]+\[bot\]$/.test(context.appLogin)
   ) {
-    throw new Error("Invalid actor or App login");
+    throw new Error("Invalid issue or App login");
   }
-  if (!["clear", "record", "verify"].includes(context.mode)) {
+  if (
+    context.mode !== undefined &&
+    !["clear", "record", "verify"].includes(context.mode)
+  ) {
     throw new Error("Invalid approval mode");
   }
 }
 
-function verifyApproval(context, callGitHub, issue) {
+function verifyApproval(context, { event, proposal }, callGitHub) {
   const approval = latestApproval(context, callGitHub);
-  if (!approval) {
-    throw new Error("No approval recorded for this proposal");
+  if (!approval || approval.cleared) {
+    throw new Error(
+      "No approval or approval revoked; authorize the proposal revision"
+    );
   }
-  if (approval.cleared) {
-    throw new Error("Approval has been revoked");
-  }
-  const digest = digestOf(issue.body);
-  if (approval.digest !== digest) {
-    throw new Error("The proposal changed since approval");
+  if (
+    approval.digest !== proposal.digest ||
+    approval.proposal !== proposal.id ||
+    approval.event !== event.id
+  ) {
+    throw new Error("Proposal or owner authorization changed since approval");
   }
   if (
     context.expectedDigest !== undefined &&
-    context.expectedDigest !== digest
+    context.expectedDigest !== proposal.digest
   ) {
-    throw new Error("The queued proposal has been replaced; start a new run");
+    throw new Error("The queued proposal changed");
   }
-  return digest;
+  return approval;
 }
-
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main();
-}
-
-function validateProposalContext(context) {
-  if (!/^[\w-]+\/[\w.-]+$/.test(context.repository)) {
-    throw new Error("Invalid repository");
-  }
-  if (!/^[1-9]\d*$/.test(context.issueNumber)) {
-    throw new Error("Invalid issue number");
-  }
-  if (!/^[\w-]+\[bot\]$/.test(context.appLogin)) {
-    throw new Error("Invalid App login");
-  }
 }

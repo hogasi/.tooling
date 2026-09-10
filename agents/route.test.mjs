@@ -50,7 +50,7 @@ test("an ordinary comment on an approved issue starts nothing", () => {
       action: "created",
       commentBody: "looks good",
       eventName: "issue_comment",
-      labels: ["ready", "reviewed", "ready for dev"]
+      labels: ["in review", "approved", "ready for dev"]
     })
   );
 
@@ -63,7 +63,7 @@ test("@claude replan clears the approval and returns to discovery", () => {
       action: "created",
       commentBody: "@claude replan — the scope changed",
       eventName: "issue_comment",
-      labels: ["ready", "reviewed", "ready for dev"]
+      labels: ["in review", "approved", "ready for dev"]
     })
   );
 
@@ -76,7 +76,7 @@ test("approving a reviewed proposal records the approval and implements", () => 
     ownerEvent({
       action: "labeled",
       labelName: "ready for dev",
-      labels: ["ready", "reviewed", "ready for dev"]
+      labels: ["in review", "approved", "ready for dev"]
     })
   );
 
@@ -94,7 +94,7 @@ test("approving a proposal that is not reviewed fails loudly", () => {
           labels: ["ready for dev"]
         })
       ),
-    /ready/
+    /approved/
   );
 });
 
@@ -106,21 +106,21 @@ test("any other label starts nothing", () => {
   assert.equal(route.role, "");
 });
 
-test("editing an approved proposal clears the approval without running a role", () => {
+test("editing the original request does not change checkpoint approval", () => {
   const route = resolveRoute(
     ownerEvent({
       action: "edited",
-      labels: ["ready", "reviewed", "ready for dev"]
+      labels: ["in review", "approved", "ready for dev"]
     })
   );
 
   assert.equal(route.role, "");
-  assert.equal(route.approval, "clear");
+  assert.equal(route.approval, "none");
 });
 
 test("editing an unapproved issue changes nothing", () => {
   const route = resolveRoute(
-    ownerEvent({ action: "edited", labels: ["ready"] })
+    ownerEvent({ action: "edited", labels: ["in review"] })
   );
 
   assert.equal(route.approval, "none");
@@ -198,7 +198,7 @@ test("a quoted replan request does not clear the approval", () => {
       action: "created",
       commentBody: "> @claude replan\n\nI decided against that.",
       eventName: "issue_comment",
-      labels: ["ready", "reviewed", "ready for dev"]
+      labels: ["in review", "approved", "ready for dev"]
     })
   );
 
@@ -223,7 +223,7 @@ test("an association describing someone other than the sender is not trusted", (
     ownerEvent({
       action: "edited",
       associationSubject: "a-stranger",
-      labels: ["ready", "reviewed", "ready for dev"],
+      labels: ["in review", "approved", "ready for dev"],
       senderPermission: "admin"
     })
   );
@@ -242,7 +242,7 @@ test("an owner may approve an outside contributor's issue", () => {
       associationSubject: "a-stranger",
       authorAssociation: "NONE",
       labelName: "ready for dev",
-      labels: ["ready", "reviewed", "ready for dev"],
+      labels: ["in review", "approved", "ready for dev"],
       senderPermission: "admin"
     })
   );
@@ -277,7 +277,7 @@ test("AI_ROLES enrolls one role at a time", () => {
     EVENT_ASSOCIATION_SUBJECT: "silviuhogasi",
     EVENT_AUTHOR_ASSOCIATION: "OWNER",
     EVENT_LABEL: "ready for dev",
-    EVENT_LABELS: '["ready","reviewed","ready for dev"]',
+    EVENT_LABELS: '["in review","approved","ready for dev"]',
     EVENT_NAME: "issues",
     EVENT_SENDER: "silviuhogasi",
     EVENT_SENDER_TYPE: "User"
@@ -290,12 +290,12 @@ test("AI_ROLES enrolls one role at a time", () => {
   );
 });
 
-test("an approval-clearing edit is gated on the implementer being enabled", () => {
+test("editing original request never schedules approval work", () => {
   const environment = {
     EVENT_ACTION: "edited",
     EVENT_ASSOCIATION_SUBJECT: "silviuhogasi",
     EVENT_AUTHOR_ASSOCIATION: "OWNER",
-    EVENT_LABELS: '["ready","reviewed","ready for dev"]',
+    EVENT_LABELS: '["in review","approved","ready for dev"]',
     EVENT_NAME: "issues",
     EVENT_SENDER: "silviuhogasi",
     EVENT_SENDER_TYPE: "User"
@@ -307,7 +307,7 @@ test("an approval-clearing edit is gated on the implementer being enabled", () =
   );
   assert.equal(
     decide({ ...environment, AI_ROLES: "planner,implementer" }).approval,
-    "clear"
+    "none"
   );
 });
 
@@ -448,7 +448,7 @@ test("an ignored event keeps its original reason in planner-only mode", () => {
     EVENT_ASSOCIATION_SUBJECT: "silviuhogasi",
     EVENT_AUTHOR_ASSOCIATION: "OWNER",
     EVENT_COMMENT_BODY: "looks good",
-    EVENT_LABELS: '["ready","reviewed","ready for dev"]',
+    EVENT_LABELS: '["in review","approved","ready for dev"]',
     EVENT_NAME: "issue_comment",
     EVENT_SENDER: "silviuhogasi",
     EVENT_SENDER_PERMISSION: "admin",
@@ -459,7 +459,11 @@ test("an ignored event keeps its original reason in planner-only mode", () => {
 
 test("the ready label sends the proposal to review", () => {
   const route = resolveRoute(
-    ownerEvent({ action: "labeled", labelName: "ready", labels: ["ready"] })
+    ownerEvent({
+      action: "labeled",
+      labelName: "in review",
+      labels: ["in review"]
+    })
   );
 
   assert.equal(route.role, "plan-reviewer");
@@ -472,8 +476,8 @@ test("the planner's own ready label starts a review", () => {
   const route = resolveRoute(
     ownerEvent({
       action: "labeled",
-      labelName: "ready",
-      labels: ["ready"],
+      labelName: "in review",
+      labels: ["in review"],
       senderLogin: "hogasi-ai[bot]",
       senderType: "Bot"
     })
@@ -486,8 +490,8 @@ test("re-adding ready reviews the revised proposal again", () => {
   const route = resolveRoute(
     ownerEvent({
       action: "labeled",
-      labelName: "ready",
-      labels: ["ready"],
+      labelName: "in review",
+      labels: ["in review"],
       senderLogin: "hogasi-ai[bot]",
       senderType: "Bot"
     })
@@ -500,8 +504,8 @@ test("the App gets no other exemption from the bot rule", () => {
   const route = resolveRoute(
     ownerEvent({
       action: "labeled",
-      labelName: "reviewed",
-      labels: ["ready", "reviewed"],
+      labelName: "approved",
+      labels: ["in review", "approved"],
       senderLogin: "hogasi-ai[bot]",
       senderType: "Bot"
     })
@@ -515,8 +519,8 @@ test("another bot cannot start a review by labelling", () => {
   const route = resolveRoute(
     ownerEvent({
       action: "labeled",
-      labelName: "ready",
-      labels: ["ready"],
+      labelName: "in review",
+      labels: ["in review"],
       senderLogin: "codex[bot]",
       senderType: "Bot"
     })
@@ -530,8 +534,8 @@ test("the reviewed label on its own starts nothing", () => {
   const route = resolveRoute(
     ownerEvent({
       action: "labeled",
-      labelName: "reviewed",
-      labels: ["ready", "reviewed"]
+      labelName: "approved",
+      labels: ["in review", "approved"]
     })
   );
 
@@ -545,10 +549,10 @@ test("approving a proposal the reviewer has not passed fails loudly", () => {
         ownerEvent({
           action: "labeled",
           labelName: "ready for dev",
-          labels: ["ready", "ready for dev"]
+          labels: ["in review", "ready for dev"]
         })
       ),
-    /reviewed/
+    /approved/
   );
 });
 
@@ -558,8 +562,8 @@ test("the plan reviewer is enrolled separately from the planner", () => {
     EVENT_ACTION: "labeled",
     EVENT_ASSOCIATION_SUBJECT: "silviuhogasi",
     EVENT_AUTHOR_ASSOCIATION: "OWNER",
-    EVENT_LABEL: "ready",
-    EVENT_LABELS: '["ready"]',
+    EVENT_LABEL: "in review",
+    EVENT_LABELS: '["in review"]',
     EVENT_NAME: "issues",
     EVENT_SENDER: "silviuhogasi",
     EVENT_SENDER_TYPE: "User"
@@ -604,7 +608,7 @@ test("a reader cannot request review on another author's issue", () => {
   const decision = resolveRoute(
     ownerEvent({
       action: "labeled",
-      labelName: "ready",
+      labelName: "in review",
       senderLogin: "reader",
       senderPermission: "read"
     })
