@@ -37,6 +37,8 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
+      automatic: ${{ steps.decide.outputs.automatic }}
+      source: ${{ steps.decide.outputs.source }}
       approval: ${{ steps.decide.outputs.approval }}
       effort: ${{ steps.decide.outputs.effort }}
       issue: ${{ steps.decide.outputs.issue || steps.work-key.outputs.issue }}
@@ -62,6 +64,8 @@ jobs:
           # repository permission; the collaborator endpoint needs it, and no
           # token available to this job can read it without the App.
           permission-administration: read
+          permission-actions: read
+          permission-issues: read
           permission-metadata: read
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
 
@@ -100,6 +104,12 @@ jobs:
           AI_PR_REVIEWER_MODEL: ${{ vars.AI_PR_REVIEWER_MODEL }}
           AI_PR_REVIEWER_EFFORT: ${{ vars.AI_PR_REVIEWER_EFFORT }}
           AI_ROLES: ${{ vars.AI_ROLES }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
+          HANDOFF_ISSUE: ${{ github.event.client_payload.issue }}
+          HANDOFF_PHASE: ${{ github.event.client_payload.phase }}
+          HANDOFF_SOURCE: ${{ github.event.client_payload.source }}
           # The App's own login, so the router can tell the planner's `ready`
           # label from every other bot event, which it still refuses.
           APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
@@ -120,7 +130,7 @@ jobs:
           EVENT_SENDER: ${{ github.event.sender.login }}
           EVENT_SENDER_PERMISSION: ${{ steps.sender.outputs.permission }}
           EVENT_SENDER_TYPE: ${{ github.event.sender.type }}
-        run: node _tooling/agents/route.mjs
+        run: node _tooling/agents/route-run.mjs
 
       # Issues and pull requests share one number sequence, so an issue and the
       # pull request that closes it never collide — but they are also never the
@@ -130,7 +140,7 @@ jobs:
         id: work-key
         if:
           steps.decide.outputs.role != '' && steps.decide.outputs.role !=
-          'pr-reviewer'
+          'pr-reviewer' && steps.decide.outputs.automatic != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           IS_PULL_REQUEST: ${{ github.event.issue.pull_request != null }}
@@ -237,7 +247,7 @@ jobs:
     # answers the older run was about to ask for again.
     concurrency:
       group: ai-plan-${{ github.repository }}-${{ needs.route.outputs.issue }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     permissions:
       contents: read
       issues: read
@@ -283,11 +293,31 @@ jobs:
         with:
           client-id: ${{ secrets.AI_APP_ID }}
           permission-contents: read
+          permission-actions: read
           permission-issues: write
           permission-metadata: read
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
 
+      - name: Claim an automatic correction or resume after owner input
+        id: correction
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
+          ISSUE: ${{ needs.route.outputs.issue }}
+          SOURCE_RUN: ${{ needs.route.outputs.source }}
+          AUTOMATIC: ${{ needs.route.outputs.automatic }}
+        run: |
+          if [ "$AUTOMATIC" = true ]; then
+            node "${RUNNER_TEMP}/tooling/agents/automation.mjs" claim
+          else
+            node "${RUNNER_TEMP}/tooling/agents/automation.mjs" reset
+            echo 'claimed=true' >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Show discovery status
+        if: steps.correction.outputs.claimed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ISSUE: ${{ needs.route.outputs.issue }}
@@ -320,6 +350,7 @@ jobs:
       # only sign the owner gets that the thing they wrote was picked up, so it
       # goes on before the model starts and is replaced by the outcome after.
       - name: React to show the run started
+        if: steps.correction.outputs.claimed == 'true'
         id: reaction
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -330,7 +361,11 @@ jobs:
         run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" start
 
       - uses: anthropics/claude-code-action@v1.0.219
+        if: steps.correction.outputs.claimed == 'true'
         with:
+          allowed_bots:
+            ${{ needs.route.outputs.automatic == 'true' &&
+            steps.app-token.outputs.app-slug || '' }}
           claude_args:
             --model ${{ needs.route.outputs.model }} --effort ${{
             needs.route.outputs.effort }} --max-turns 60 --allowedTools
@@ -368,6 +403,19 @@ jobs:
       CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
       AI_REVIEW_APP_ID: ${{ secrets.AI_REVIEW_APP_ID }}
       AI_REVIEW_APP_PRIVATE_KEY: ${{ secrets.AI_REVIEW_APP_PRIVATE_KEY }}
+
+  plan-correction:
+    needs: [route, plan-review]
+    if: needs.plan-review.result == 'success'
+    uses: ./.github/workflows/ai-dispatch.yml
+    permissions:
+      contents: read
+    with:
+      issue: ${{ needs.route.outputs.issue }}
+      source: ${{ github.run_id }}
+    secrets:
+      AI_APP_ID: ${{ secrets.AI_APP_ID }}
+      AI_APP_PRIVATE_KEY: ${{ secrets.AI_APP_PRIVATE_KEY }}
 
   pr-review:
     name: PR review

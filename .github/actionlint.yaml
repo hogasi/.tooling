@@ -11,3 +11,6 @@ paths:
       - 'property "workflow_(sha|repository)" is not defined in object type'
       # GitHub supports queue:max; actionlint 1.7.12 predates the queue property.
       - 'unexpected key "queue" for "concurrency" section'
+  .github/workflows/ai-dispatch.yml:
+    ignore:
+      - 'property "workflow_(sha|repository)" is not defined in object type'

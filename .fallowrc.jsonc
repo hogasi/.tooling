@@ -8,6 +8,7 @@
   "entry": [
     "agents/*.test.mjs",
     "agents/review-run.mjs",
+    "agents/route-run.mjs",
     "packages/*/*.test.mjs",
     "renovate/*.test.mjs"
   ],
@@ -29,6 +30,12 @@
 
   "health": {
     "thresholdOverrides": [
+      {
+        "files": ["agents/automation.mjs"],
+        "functions": ["validateCounter", "currentFinding", "requireSource"],
+        "maxCrap": 57,
+        "reason": "Estimated CRAP does not measure node:test coverage. automation.test.mjs exercises persisted limits, duplicate evidence, malformed counters, forged records and source workflow/job validation through public entry points. Other complexity limits stay unchanged."
+      },
       {
         "files": ["agents/state.mjs", "agents/proposal.mjs"],
         "functions": ["readProposal", "readDevEvent", "setStatus"],

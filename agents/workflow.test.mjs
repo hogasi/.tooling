@@ -172,7 +172,7 @@ test("approval checks out its code and exposes the verified digest", () => {
 test("routing reads the sender's real permission before deciding", () => {
   const route = job("route");
   const lookup = route.indexOf("collaborators/${SENDER}/permission");
-  const decision = route.indexOf("run: node _tooling/agents/route.mjs");
+  const decision = route.indexOf("run: node _tooling/agents/route-run.mjs");
 
   assert.ok(lookup > 0, "The route job never reads the sender's permission");
   assert.ok(lookup < decision);
@@ -294,4 +294,19 @@ test("only the trusted base is checked out and PR commits are read as data", () 
   assert.match(codexWorkflow, /ref: \$\{\{ github.sha \}\}/);
   assert.match(codexWorkflow, /fetch-depth: 0/);
   assert.doesNotMatch(codexWorkflow, /ref:.*head|npm ci|pnpm install/);
+});
+
+test("automatic planning is claimed before model execution and admits only the verified builder bot", () => {
+  const planner = job("plan");
+  assert.ok(
+    planner.indexOf('automation.mjs" claim') <
+      planner.indexOf("uses: anthropics/claude-code-action")
+  );
+  assert.match(planner, /if: steps.correction.outputs.claimed == 'true'/);
+  assert.match(
+    planner,
+    /allowed_bots:[\s\S]*?needs.route.outputs.automatic == 'true'/
+  );
+  assert.doesNotMatch(planner, /permission-contents: write/);
+  assert.match(planner, /cancel-in-progress: false/);
 });
