@@ -310,3 +310,9 @@ test("automatic planning is claimed before model execution and admits only the v
   assert.doesNotMatch(planner, /permission-contents: write/);
   assert.match(planner, /cancel-in-progress: false/);
 });
+
+test("automatic planner reactions target the resolved issue without an issue event payload", () => {
+  const target = job("plan").split("TARGET:", 2)[1].split("run:", 1)[0];
+  assert.match(target, /needs.route.outputs.issue/);
+  assert.doesNotMatch(target, /github.event.issue.number/);
+});

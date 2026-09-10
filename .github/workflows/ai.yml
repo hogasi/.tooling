@@ -243,8 +243,7 @@ jobs:
       'skipped'))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    # Superseded discovery is worth cancelling: the newer comment contains the
-    # answers the older run was about to ask for again.
+    # Owner input and automatic corrections share one issue writer.
     concurrency:
       group: ai-plan-${{ github.repository }}-${{ needs.route.outputs.issue }}
       cancel-in-progress: false
@@ -357,7 +356,7 @@ jobs:
           TARGET:
             ${{ github.event.comment.id && format('issues/comments/{0}',
             github.event.comment.id) || format('issues/{0}',
-            github.event.issue.number) }}
+            needs.route.outputs.issue) }}
         run: bash "${RUNNER_TEMP}/tooling/agents/reaction.sh" start
 
       - uses: anthropics/claude-code-action@v1.0.219
