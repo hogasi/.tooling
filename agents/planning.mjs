@@ -1,5 +1,5 @@
 import { appendDeliveryPlan } from "./delivery-plan.mjs";
-import { verifyInheritance } from "./delivery-scope.mjs";
+import { appendInheritance, readInheritance } from "./delivery-scope.mjs";
 import { githubRequest } from "./github.mjs";
 import { latestComment, readComments, readProposal } from "./proposal.mjs";
 import { setStatus } from "./state.mjs";
@@ -21,25 +21,20 @@ export function capturePlanning(context, callGitHub = githubRequest) {
       "Planning requires an open issue without development authorization"
     );
   }
-  verifyInheritance(context, issue, callGitHub);
+  const inherited = readInheritance(context, issue, callGitHub);
   const comments = readComments(context, callGitHub);
   const proposal = latestComment({
     comments,
     login: context.appLogin,
     marker: PROPOSAL
   });
-  return { body: issue.body, proposal: proposal?.id ?? null };
+  return { body: issue.body, inherited, proposal: proposal?.id ?? null };
 }
 
 export function publishPlanning(context, callGitHub = githubRequest) {
   const result = validateResult(context.result);
   const current = capturePlanning(context, callGitHub);
-  if (
-    current.body !== context.snapshot.body ||
-    current.proposal !== context.snapshot.proposal
-  ) {
-    throw new Error("The request or proposal changed during planning");
-  }
+  requirePlanningSnapshot(context.snapshot, current);
   const comments = readComments(context, callGitHub);
   const latest = latestComment({
     comments,
@@ -48,7 +43,11 @@ export function publishPlanning(context, callGitHub = githubRequest) {
   });
   const proposal =
     result.kind === "proposal"
-      ? publishCheckpoint(context, { latest, result }, callGitHub)
+      ? publishCheckpoint(
+          context,
+          { inherited: current.inherited, latest, result },
+          callGitHub
+        )
       : latest;
   publishSummary(context, { comments, proposal, result }, callGitHub);
   if (result.kind === "proposal") {
@@ -59,8 +58,11 @@ export function publishPlanning(context, callGitHub = githubRequest) {
   }
 }
 
-function publishCheckpoint(context, { latest, result }, callGitHub) {
-  const body = `${PROPOSAL}${appendDeliveryPlan(result.proposal, result.deliverables)}`;
+function publishCheckpoint(context, { inherited, latest, result }, callGitHub) {
+  const body = `${PROPOSAL}${appendInheritance(appendDeliveryPlan(result.proposal, result.deliverables), inherited)}`;
+  if (body.length > 60_000) {
+    throw new Error("The complete proposal exceeds the comment limit");
+  }
   if (latest?.body === body && latest.created_at === latest.updated_at) {
     return latest;
   }
@@ -93,6 +95,17 @@ function publishSummary(context, { comments, proposal, result }, callGitHub) {
       ? `repos/${context.repository}/issues/comments/${summary.id}`
       : `repos/${context.repository}/issues/${context.issueNumber}/comments`
   });
+}
+
+function requirePlanningSnapshot(snapshot, current) {
+  if (
+    current.body !== snapshot.body ||
+    current.proposal !== snapshot.proposal ||
+    appendInheritance("", current.inherited) !==
+      appendInheritance("", snapshot.inherited ?? [])
+  ) {
+    throw new Error("The request or proposal changed during planning");
+  }
 }
 
 function validateBody(value) {

@@ -1,8 +1,10 @@
 import { readApprovedProposal } from "./approval.mjs";
 import { claimCorrection, resetCorrections } from "./automation.mjs";
 import { githubRequest, readActionsPages } from "./github.mjs";
+import { integrationIssue } from "./parent-integration.mjs";
 import { pullRequestIssue } from "./pull-request.mjs";
 import { readRepairCi, readRepairVerdict } from "./repair-evidence.mjs";
+import { deliveryTarget } from "./stack-target.mjs";
 
 export function claimRepair(context, callGitHub = githubRequest) {
   const evidence = repairEvidence(context, callGitHub);
@@ -46,12 +48,16 @@ export function resolveRepair(context, callGitHub = githubRequest) {
 }
 
 function approvedEvidence(context, { issue, pull }, callGitHub) {
-  const approved = readApprovedProposal(
-    { ...context, issueNumber: issue },
-    callGitHub
-  );
+  if (
+    deliveryTarget({ ...context, issueNumber: issue }, callGitHub).base !==
+    pull.base.ref
+  ) {
+    throw new Error("Repair PR targets an unapproved dependency branch");
+  }
+  const scope = { ...context, issueNumber: issue };
+  const approved = readApprovedProposal(scope, callGitHub);
   const verdict = readRepairVerdict(context, { approved, pull }, callGitHub);
-  const ci = readRepairCi(context, pull.head.sha, callGitHub);
+  const ci = readRepairCi(context, pull, callGitHub);
   if (context.sourceKind === "ci" && String(ci?.id) !== context.sourceRunId) {
     return null;
   }
@@ -128,7 +134,13 @@ function repairEvidence(context, callGitHub) {
   if (!pull) {
     return null;
   }
-  const issue = pullRequestIssue({ ...context, pullRequest: pull });
+  const issue = pull.draft
+    ? integrationIssue(context, pull, callGitHub)
+    : pullRequestIssue({
+        ...context,
+        allowedBase: pull.base.ref,
+        pullRequest: pull
+      });
   if (!issue) {
     return null;
   }
@@ -158,7 +170,7 @@ function requireContext(context) {
 function requireReviewSource(context, run, callGitHub) {
   if (
     run.path !== ".github/workflows/ai.yml" ||
-    run.event !== "pull_request_target"
+    !["pull_request_target", "workflow_run"].includes(run.event)
   ) {
     throw new Error("Untrusted PR review source");
   }

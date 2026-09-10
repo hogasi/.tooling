@@ -25,7 +25,8 @@ Workflow v2 is being delivered in three increments:
 3. **Child delivery:** native links, inherited scope and separate authorization
    are implemented; live validation is pending. Parent issues hold shared goals;
    children have their own reviewed deliverable and authorization. Independent
-   PRs target main. Native stacked PR delivery remains pending.
+   PRs target their parent integration branch. Dependencies can form native
+   stacks within that parent; only the top-level parent PR targets main.
 
 Do not enable future handoffs by simply allowing arbitrary bots. Trusted code
 must authenticate the source, re-read current state and claim each attempt.
@@ -112,15 +113,18 @@ The existing PR route accepts open, non-draft, same-repository App-authored
 and synchronize events. It validates the owner-approved checkpoint and supplies
 the three-dot diff, committed base/head text, discussion and Actions results for
 the head. Reviewer tools are disabled. No PR scripts or dependency installs run
-in the privileged reviewer. Stacks are not yet admitted by this route.
+in the privileged reviewer. Child PR reviews use the enrolled CI completion
+handoff to the default-branch caller, validate the current approved parent or
+prerequisite base, and include inherited parent context. The privileged caller
+must restrict PR-target events to the default branch.
 
 The complete prompt is limited to 512 KiB. Submodules fail visibly; binary
 contents are unavailable. Larger repos need scoped retrieval before enrollment.
 The runner rechecks proposal and code revisions before publishing COMMENT
 feedback tied to the head, not merge approval. Matching
 base/head/proposal/model/ effort inputs suppress duplicate model calls.
-Pending/missing CI is not a pass; CI completion alone does not start another PR
-review in delivery 1.
+Pending/missing CI is not a pass. Child CI completion can request review;
+repeated input is deduplicated.
 
 Plan, PR and smoke modes share one `codex-subscription` queue per consumer.
 Persist the subscription login after model execution, including model failures,
@@ -197,7 +201,9 @@ after queueing.
 CI and review share one claim for the base/head/proposal digest. Three automatic
 attempts persist across commits. Verified current CI and reviewer passes finish
 the cycle without a model call; owner repair requests explicitly resume it.
-Drafts and stale sources start nothing. Planner and builder queues use GitHub's
+Stale sources start nothing. A draft parent with all children integrated may
+receive bounded repair for failing combined CI. Other drafts start nothing.
+Planner and builder queues use GitHub's
 [`queue: max`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency)
 so later events do not replace pending work; the platform ceiling is 100 pending
 jobs per group. Required CI and human merge remain independent gates.
@@ -245,13 +251,21 @@ implementation model.
 
 `agents/delivery-scope.mjs` verifies inherited checkpoint identity, exact child
 scope, parent authorization and native links during planning and approval.
-`agents/delivery-evidence.mjs` gates dependent implementation on verified
-default branch merges. `agents/delivery-progress.mjs` maintains one parent
-summary after child PR merges. Original issue bodies and previous checkpoints
-remain intact.
+`agents/delivery-evidence.mjs` verifies reviewed child integrations into their
+parent branch, including current approved scope and enrolled CI.
+`agents/delivery-progress.mjs` maintains one parent summary after child PR
+merges. Original issue bodies and previous checkpoints remain intact.
 
 Native endpoints are documented by GitHub for
 [sub-issues](https://docs.github.com/en/rest/issues/sub-issues) and
 [issue dependencies](https://docs.github.com/en/rest/issues/issue-dependencies).
 Child implementations still need their own reviewed proposals and owner labels.
-Native stacked PR support is the next delivery, not enabled by this increment.
+`agents/parent-integration.mjs` owns integration branches, draft parent PRs,
+combined CI readiness and final closing references. `agents/stack-target.mjs`
+resolves approved parent or prerequisite bases. `agents/stack.mjs` registers
+native stacks; `agents/stack-refresh.mjs` refreshes downstream layers with
+current-head checks. `agents/stack-review.mjs` authenticates CI handoffs so
+privileged review continues to run from the default branch. One parent-family
+writer serializes branch mutations; the parent PR is excluded from child stacks.
+These changes still require the live parent and stack rollout tests before
+claiming deployment complete.

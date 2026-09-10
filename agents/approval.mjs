@@ -1,9 +1,10 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { latestApproval, verifyApproval } from "./authorization-record.mjs";
 import { verifyInheritance } from "./delivery-scope.mjs";
 import { githubRequest } from "./github.mjs";
-import { latestComment, readComments, readProposal } from "./proposal.mjs";
+import { readProposal } from "./proposal.mjs";
 import { requirePlanReview } from "./review.mjs";
 import { readDevEvent, setStatus } from "./state.mjs";
 
@@ -17,7 +18,10 @@ export function applyApproval(context, callGitHub = githubRequest) {
     clearApproval(context, issue, callGitHub);
     return "";
   }
-  verifyInheritance(context, issue, callGitHub);
+  const inherited = verifyInheritance(context, issue, callGitHub);
+  for (const parent of inherited) {
+    requireAuthority(context, parent.actor, callGitHub);
+  }
   const proposal = readProposal(context, callGitHub);
   requireDevLabel(issue);
   const event = readDevEvent(context, callGitHub);
@@ -62,34 +66,6 @@ function clearApproval(context, issue, callGitHub) {
   }
   postApproval(context, { cleared: true }, callGitHub);
   setStatus(context, "learning", callGitHub);
-}
-
-function latestApproval(context, callGitHub) {
-  const latest = latestComment({
-    comments: readComments(context, callGitHub),
-    login: context.appLogin,
-    marker: MARKER
-  });
-  if (!latest) {
-    return;
-  }
-  const line = latest.body.split("\n", 1)[0];
-  if (!line.endsWith(" -->")) {
-    throw new Error("Malformed approval record");
-  }
-  const record = JSON.parse(line.slice(MARKER.length, -4));
-  if (record.cleared === true) {
-    return record;
-  }
-  if (
-    !/^[a-f0-9]{64}$/.test(record.digest) ||
-    !Number.isSafeInteger(record.proposal) ||
-    !Number.isSafeInteger(record.event) ||
-    !/^[\w-]+$/.test(record.actor)
-  ) {
-    throw new Error("Malformed approval record");
-  }
-  return record;
 }
 
 function main() {
@@ -244,28 +220,6 @@ function validateContext(context) {
   }
 }
 
-function verifyApproval(context, { event, proposal }, callGitHub) {
-  const approval = latestApproval(context, callGitHub);
-  if (!approval || approval.cleared) {
-    throw new Error(
-      "No approval or approval revoked; authorize the proposal revision"
-    );
-  }
-  if (
-    approval.digest !== proposal.digest ||
-    approval.proposal !== proposal.id ||
-    approval.event !== event.id
-  ) {
-    throw new Error("Proposal or owner authorization changed since approval");
-  }
-  if (
-    context.expectedDigest !== undefined &&
-    context.expectedDigest !== proposal.digest
-  ) {
-    throw new Error("The queued proposal changed");
-  }
-  return approval;
-}
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main();
 }

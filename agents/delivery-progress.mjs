@@ -1,9 +1,8 @@
-import { readApprovedProposal } from "./approval.mjs";
-import { readMergedDelivery } from "./delivery-evidence.mjs";
 import { readChild } from "./delivery-scope.mjs";
-import { githubRequest, readPages } from "./github.mjs";
+import { githubRequest } from "./github.mjs";
+import { deliveryRows, parentDeliveries } from "./parent-integration.mjs";
 import { latestComment, readComments } from "./proposal.mjs";
-import { hasSameRepository } from "./pull-request.mjs";
+import { hasSameRepository, mergeTarget } from "./pull-request.mjs";
 
 const MARKER = "<!-- hogasi-ai delivery ";
 
@@ -23,7 +22,7 @@ export function parentProgressRoute(context, callGitHub = githubRequest) {
     path: `repos/${context.repository}/issues/${issueNumber}`
   });
   const child = readChild(issue, context.appLogin);
-  return child
+  return child && mergeTarget(pull) === `claude/issue-${child.parent}`
     ? {
         approval: "none",
         issue: String(child.parent),
@@ -38,21 +37,14 @@ export function parentProgressRoute(context, callGitHub = githubRequest) {
 }
 
 export function refreshDelivery(context, callGitHub = githubRequest) {
-  const { proposal } = readApprovedProposal(context, callGitHub);
-  const linked = readPages(
-    `repos/${context.repository}/issues/${context.issueNumber}/sub_issues`,
-    callGitHub
-  );
-  const children = linked.filter(
-    (issue) => readChild(issue, context.appLogin)?.digest === proposal.digest
-  );
-  const rows = children.map((child) => deliveryRow(context, child, callGitHub));
+  const { approved, deliveries } = parentDeliveries(context, callGitHub);
+  const rows = deliveryRows(deliveries);
   const summary = latestComment({
     comments: readComments(context, callGitHub),
     login: context.appLogin,
     marker: MARKER
   });
-  const body = `${MARKER}${JSON.stringify({ proposal: proposal.id })} -->\n${rows.join("\n")}\n\nEach child needs its own reviewed proposal and owner ready for dev. Checked items have an App PR merged into the default branch; issue closure alone is not delivery evidence. Verify the overall parent acceptance criteria before closing this parent.`;
+  const body = `${MARKER}${JSON.stringify({ proposal: approved.proposal.id })} -->\n${rows.join("\n")}\n\nEach child needs its own reviewed proposal and owner ready for dev. Checked items have a reviewed App PR integrated into the parent branch. Child issues remain open until the top-level parent PR delivers the combined feature to main.`;
   callGitHub({
     body: { body },
     method: summary ? "PATCH" : "POST",
@@ -62,22 +54,11 @@ export function refreshDelivery(context, callGitHub = githubRequest) {
   });
 }
 
-function deliveryRow(context, child, callGitHub) {
-  if (child.state !== "closed") {
-    return `- [ ] #${child.number}: ${child.title}`;
-  }
-  const delivered = readMergedDelivery(context, child, callGitHub);
-  return delivered
-    ? `- [x] #${child.number}: ${child.title} — merged in #${delivered.number}`
-    : `- [ ] #${child.number}: ${child.title} — closed without a verified PR merge`;
-}
-
 function mergedChildIssue(context, pull) {
   if (
     !pull.merged_at ||
     pull.user?.login !== context.appLogin ||
-    !hasSameRepository(pull, context.repository) ||
-    pull.base.ref !== context.defaultBranch
+    !hasSameRepository(pull, context.repository)
   ) {
     return "";
   }

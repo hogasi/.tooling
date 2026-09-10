@@ -1,47 +1,64 @@
+import { readApprovedProposal } from "./approval.mjs";
 import { readChild } from "./delivery-scope.mjs";
 import { githubRequest, readPages } from "./github.mjs";
-import { hasSameRepository } from "./pull-request.mjs";
+import { hasSameRepository, mergeTarget } from "./pull-request.mjs";
+import { readRepairCi, readRepairVerdict } from "./repair-evidence.mjs";
 
-export function readMergedDelivery(context, child, callGitHub = githubRequest) {
+export function readIntegratedDelivery(
+  context,
+  child,
+  callGitHub = githubRequest
+) {
+  const origin = readChild(child, context.appLogin);
+  if (
+    !origin ||
+    child.labels.every((label) => label.name !== "ready for dev")
+  ) {
+    return null;
+  }
+  const pull = readMergedDelivery(
+    { ...context, deliveryBranch: `claude/issue-${origin.parent}` },
+    child,
+    callGitHub
+  );
+  if (!pull) {
+    return null;
+  }
+  const approved = readApprovedProposal(
+    { ...context, issueNumber: String(child.number) },
+    callGitHub
+  );
+  return verifiedIntegration(context, { approved, pull }, callGitHub);
+}
+
+function readMergedDelivery(context, child, callGitHub = githubRequest) {
   const branch = `claude/issue-${child.number}`;
   const pulls = readPages(
     `repos/${context.repository}/pulls?state=closed&head=${context.repository.split("/", 1)[0]}:${branch}&per_page=100`,
     callGitHub
   );
-  return pulls.find(
-    (pull) =>
-      pull.merged_at &&
-      pull.user?.login === context.appLogin &&
-      hasSameRepository(pull, context.repository) &&
-      pull.head.ref === branch &&
-      pull.base.ref === context.defaultBranch
-  );
+  return pulls
+    .toSorted((left, right) => right.number - left.number)
+    .find(
+      (pull) =>
+        pull.merged_at &&
+        pull.user?.login === context.appLogin &&
+        hasSameRepository(pull, context.repository) &&
+        pull.head.ref === branch &&
+        mergeTarget(pull) === context.deliveryBranch
+    );
 }
 
-export function requireDependencies(
-  context,
-  issue,
-  callGitHub = githubRequest
-) {
-  if (!readChild(issue, context.appLogin)) {
-    return;
-  }
-  const dependencies = readPages(
-    `repos/${context.repository}/issues/${issue.number}/dependencies/blocked_by`,
+function verifiedIntegration(context, evidence, callGitHub) {
+  const verdict = readRepairVerdict(
+    { ...context, sourceKind: "integration" },
+    evidence,
     callGitHub
   );
-  for (const dependency of dependencies) {
-    const current = callGitHub({
-      path: `repos/${context.repository}/issues/${dependency.number}`
-    });
-    // silviu: dependencies must reach main until native stacked delivery is enabled.
-    if (
-      current.state !== "closed" ||
-      !readMergedDelivery(context, current, callGitHub)
-    ) {
-      throw new Error(
-        `Prerequisite #${current.number} is not delivered to the default branch`
-      );
-    }
-  }
+  const ci = readRepairCi(context, evidence.pull, callGitHub);
+  return verdict === "pass" &&
+    ci?.status === "completed" &&
+    ci.conclusion === "success"
+    ? evidence
+    : null;
 }

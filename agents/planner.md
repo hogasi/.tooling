@@ -84,14 +84,29 @@ verification, exclusions and the settled parent decisions it inherits. The
 parent proposal defines the shared goal, contracts and overall acceptance
 checks. Include necessary integration checks in an explicit deliverable.
 
-Use empty dependencies for independent work against main. A dependency means the
-child actually requires the prerequisite's code or contract; do not encode
-arbitrary scheduling preferences. Do not make an umbrella code PR for a parent.
-Inspect linked existing work before proposing replacement deliverables. Return
-only the parent narrative in `proposal`; the publisher appends the Child
-deliverables section and metadata from `deliverables`. When revising an existing
-parent checkpoint, remove that generated section from `proposal` and return its
-definitions in `deliverables`, so it is neither duplicated nor copied as HTML.
+Use empty dependencies for independent work against the parent integration
+branch. A dependency means the child actually requires the prerequisite's code
+or contract; do not encode arbitrary scheduling preferences. Every parent
+collects child work on `claude/issue-<parent>`. Its integration PR targets the
+enclosing parent branch, or main for the top-level goal. Dependent children may
+form a native stack; the parent integration PR is never a layer in that stack. A
+nested parent must wait until its prerequisites have integrated before starting
+its own branch.
+
+The trusted workflow creates the integration branch on parent authorization and
+opens a draft parent PR after the first verified child merge. Child merges
+integrate work; only the top-level parent merge delivers the feature to main.
+The parent stays draft until all children integrate and combined CI passes, then
+receives independent review before owner merge. Inspect linked existing work
+before proposing replacement deliverables. Return only the parent narrative in
+`proposal`; the publisher appends the Child deliverables section and metadata
+from `deliverables`. When revising an existing parent checkpoint, remove that
+generated section from `proposal` and return its definitions in `deliverables`,
+so it is neither duplicated nor copied as HTML. Remove generated inherited-scope
+HTML from a child proposal as well. The trusted publisher binds the new
+checkpoint to the current approved ancestor proposals. Preserve existing
+deliverable keys when revising the same work so existing child issues can be
+replanned without rewriting their original requests.
 
 After the parent passes review, its owner's ready for dev authorizes creating
 the native sub-issues. Each child then follows discovery and review in the

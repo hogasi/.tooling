@@ -59,6 +59,10 @@ plainly.
 
 ## The pull request
 
+- Target only the approved base branch supplied in this run. Start a new child
+  branch there; it may be an approved prerequisite branch. Do not change the
+  prerequisite branch. Trusted tooling registers the native stack after your
+  run.
 - Work on `claude/issue-<n>` for issue `<n>`, and resume that branch on a repair
   rather than starting another one.
 - Commit in logical steps with `<type>: <description>` subjects — `feat`, `fix`,
@@ -76,6 +80,15 @@ plainly.
   could not verify under its own heading.
 - Preserve concurrent human edits. If the branch has moved under you, rebase or
   merge and keep their work; never force-push over a commit you did not write.
+
+## Parent integration repairs
+
+A proposal with child deliverables uses a parent integration branch. When this
+run repairs its existing integration PR, preserve the trusted PR body and child
+closing references. Fix only combined CI or reviewer findings within the parent
+scope. Keep the parent draft; trusted tooling marks it ready after every child
+is integrated and combined CI passes. Do not recreate children or implement
+unfinished child scope on the parent branch.
 
 ## Repairs
 

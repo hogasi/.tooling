@@ -3,6 +3,14 @@ import { appendFileSync } from "node:fs";
 import { refreshDelivery } from "./delivery-progress.mjs";
 import { claimChildDiscovery, createChildren } from "./delivery.mjs";
 import { githubRequest } from "./github.mjs";
+import {
+  createParentBranch,
+  finalizeParentPull,
+  integrationIssue
+} from "./parent-integration.mjs";
+import { resolveCiWorkflow } from "./repair-evidence.mjs";
+import { deliveryTarget } from "./stack-target.mjs";
+import { setStatus } from "./state.mjs";
 
 const env = process.env;
 if (
@@ -13,9 +21,11 @@ if (
 }
 const context = {
   appLogin: env.APP_LOGIN,
+  ciWorkflow: resolveCiWorkflow(env.AI_CI_WORKFLOW),
   defaultBranch: env.DEFAULT_BRANCH,
   issueNumber: env.ISSUE,
   repository: env.GITHUB_REPOSITORY,
+  reviewerLogin: env.REVIEWER_LOGIN,
   runId: env.GITHUB_RUN_ID,
   senderLogin: env.APP_LOGIN,
   sourceRunId: env.SOURCE_RUN
@@ -27,6 +37,17 @@ switch (process.argv[2]) {
     break;
   }
   case "create": {
+    if (env.PULL_REQUEST) {
+      const pull = githubRequest({
+        path: `repos/${context.repository}/pulls/${env.PULL_REQUEST}`
+      });
+      if (integrationIssue(context, pull) === context.issueNumber) {
+        prepareLeaf();
+        output("leaf=true");
+        break;
+      }
+    }
+    createParentBranch(context);
     const children = createChildren(context);
     for (const child of children) {
       if (child.state !== "open") {
@@ -45,12 +66,16 @@ switch (process.argv[2]) {
         path: `repos/${context.repository}/dispatches`
       });
     }
+    if (children.length === 0) {
+      prepareLeaf();
+    }
     output(`leaf=${children.length === 0}`);
 
     break;
   }
   case "progress": {
     refreshDelivery(context);
+    finalizeParentPull(context);
 
     break;
   }
@@ -61,4 +86,17 @@ switch (process.argv[2]) {
 function output(value) {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- Runner-owned output file.
   appendFileSync(env.GITHUB_OUTPUT, `${value}\n`);
+}
+
+function prepareLeaf() {
+  try {
+    const target = deliveryTarget(context);
+    if (target.writer !== env.EXPECTED_WRITER) {
+      throw new Error("The dependency writer changed while queued");
+    }
+    output(`base=${target.base}`);
+  } catch (error) {
+    setStatus(context, "blocked");
+    throw error;
+  }
 }

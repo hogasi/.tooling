@@ -1,3 +1,5 @@
+import { githubRequest, readPages } from "./github.mjs";
+
 const skipReview = (reason) => ({ approval: "none", reason, role: "" });
 
 export function hasSameRepository(pullRequest, repository) {
@@ -6,26 +8,48 @@ export function hasSameRepository(pullRequest, repository) {
     pullRequest.base?.repo?.full_name === repository
   );
 }
+export function mergeTarget(pull) {
+  return pull.stack?.base?.ref ?? pull.base?.ref;
+}
 /**
 Return the linked issue only for an open, non-draft implementation PR in this repository.
 */
 export function pullRequestIssue({
+  allowedBase,
   appLogin,
   defaultBranch,
   pullRequest,
   repository
 }) {
-  if (!pullRequest || !isImplementationPull(pullRequest, appLogin)) {
+  if (!isImplementationPull(pullRequest, appLogin)) {
     return "";
   }
   if (!hasSameRepository(pullRequest, repository)) {
     return "";
   }
-  if (pullRequest.base.ref !== defaultBranch) {
+  if (pullRequest.base.ref !== (allowedBase ?? defaultBranch)) {
     return "";
   }
   return pullRequest.head.ref?.match(/^claude\/issue-([1-9]\d*)$/)?.[1] ?? "";
 }
+
+export function readImplementationPull(context, callGitHub = githubRequest) {
+  const branch = `claude/issue-${context.issueNumber}`;
+  const pulls = readPages(
+    `repos/${context.repository}/pulls?state=open&head=${context.repository.split("/", 1)[0]}:${branch}&per_page=100`,
+    callGitHub
+  ).filter(
+    (pull) =>
+      pull.head.ref === branch &&
+      hasSameRepository(pull, context.repository) &&
+      pull.user?.login === context.appLogin
+  );
+  if (pulls.length !== 1) {
+    throw new Error("Expected exactly one open App implementation PR");
+  }
+  return pulls[0];
+}
+
 export function routePullRequest(event) {
   if (!["opened", "ready_for_review", "synchronize"].includes(event.action)) {
     return skipReview("this PR event starts nothing");
@@ -50,7 +74,7 @@ export function routePullRequest(event) {
 
 function isImplementationPull(pullRequest, appLogin) {
   return (
-    pullRequest.state === "open" &&
+    pullRequest?.state === "open" &&
     pullRequest.draft === false &&
     pullRequest.user?.login === appLogin
   );

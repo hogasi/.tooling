@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
 
 import { readApprovedProposal } from "./approval.mjs";
+import { readDeliveryPlan } from "./delivery-plan.mjs";
+import { readInheritance } from "./delivery-scope.mjs";
 import { githubRequest, readActionsPages, readPages } from "./github.mjs";
+import { integrationIssue } from "./parent-integration.mjs";
 import { pullRequestIssue } from "./pull-request.mjs";
 import { validateVerdict } from "./review.mjs";
+import { deliveryTarget } from "./stack-target.mjs";
 
 const MAX_REVIEW_BODY = 65_536;
 const pullPath = (context) =>
@@ -22,7 +26,8 @@ export function beginPullRequestReview(context, callGitHub = githubRequest) {
   ) {
     throw new Error("PR changed while queued; use a current PR event");
   }
-  const { digest, proposal } = readApprovedProposal(context, callGitHub);
+  const { digest, issue, proposal } = readApprovedProposal(context, callGitHub);
+  const inherited = readInheritance(context, issue, callGitHub);
   const snapshot = reviewSnapshot(context, { digest, pullRequest });
   const reviews = readReviews(context, callGitHub);
   if (hasPublishedReview(context, { reviews, snapshot })) {
@@ -33,7 +38,7 @@ export function beginPullRequestReview(context, callGitHub = githubRequest) {
     `repos/${context.repository}/issues/${context.pullRequestNumber}/comments`,
     callGitHub
   );
-  return { ci, comments, proposal, pullRequest, reviews, snapshot };
+  return { ci, comments, inherited, proposal, pullRequest, reviews, snapshot };
 }
 
 /**
@@ -77,9 +82,11 @@ function hasPublishedReview(context, { reviews, snapshot }) {
 }
 function readPullRequest(context, callGitHub) {
   const pullRequest = callGitHub({ path: pullPath(context) });
+  const allowedBase = deliveryTarget(context, callGitHub).base;
   if (
     pullRequest?.number !== Number(context.pullRequestNumber) ||
-    pullRequestIssue({ ...context, pullRequest }) !== context.issueNumber
+    pullRequestIssue({ ...context, allowedBase, pullRequest }) !==
+      context.issueNumber
   ) {
     throw new Error("PR is no longer eligible for review");
   }
@@ -90,6 +97,7 @@ function readPullRequest(context, callGitHub) {
   ) {
     throw new Error("Invalid PR commit");
   }
+  requireParentIntegration(context, pullRequest, callGitHub);
   return pullRequest;
 }
 function readReviews(context, callGitHub) {
@@ -110,6 +118,15 @@ function readWorkflowRuns(context, callGitHub, head) {
       name: run.name,
       status: run.status
     }));
+}
+function requireParentIntegration(context, pull, callGitHub) {
+  const approved = readApprovedProposal(context, callGitHub);
+  if (
+    readDeliveryPlan(approved.proposal).length > 0 &&
+    integrationIssue(context, pull, callGitHub) !== context.issueNumber
+  ) {
+    throw new Error("Parent integration is incomplete or stale");
+  }
 }
 function reviewBody(context, verdict) {
   const ci = context.ci
@@ -136,6 +153,7 @@ function reviewBody(context, verdict) {
 function reviewSnapshot(context, { digest, pullRequest }) {
   const input = {
     base: pullRequest.base.sha,
+    baseRef: pullRequest.base.ref,
     digest,
     effort: context.effort,
     head: pullRequest.head.sha,

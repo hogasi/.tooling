@@ -59,7 +59,7 @@ function fixture() {
   ].map((comment) => ({ ...comment, user: { login: context.appLogin } }));
   const reviews = [
     {
-      body: `<!-- hogasi-review pr key=test -->\n<!-- hogasi-review result ${JSON.stringify({ base, digest, head, run: "100", status: "changes_requested" })} -->\nFix the defect.`,
+      body: `<!-- hogasi-review pr key=test -->\n<!-- hogasi-review result ${JSON.stringify({ base, baseRef: "main", digest, head, run: "100", status: "changes_requested" })} -->\nFix the defect.`,
       commit_id: head,
       state: "COMMENTED",
       user: { login: context.reviewerLogin }

@@ -114,6 +114,7 @@ evidence is recorded below; other repositories need their own enrollment.
        issue_comment:
          types: [created]
        pull_request_target:
+         branches: [main] # Use the repository default branch.
          types: [opened, ready_for_review, synchronize, closed]
        repository_dispatch:
          types: [ai-correction]
@@ -316,12 +317,13 @@ merging this tooling version:
    stale review and plan/PR runs queued together before broader enrollment.
 
 Only open, non-draft, same-repository PRs authored by the implementation App on
-`claude/issue-<n>` against the default branch qualify. Events must come from
-that App or a human with repository write/admin permission. The linked issue
-must retain its exact owner-approved checkpoint and active authorization. PR
-feedback uses that approved scope; it does not require the old plan-review base
-to equal the new base. Implementation and repair approval gates still require a
-current plan pass.
+`claude/issue-<n>` against their approved delivery base qualify. Default-branch
+PRs use PR events; child-base PRs use enrolled CI completion through the
+default-branch caller. Events must come from that App or a human with repository
+write/admin permission. The linked issue must retain its exact owner-approved
+checkpoint and active authorization. PR feedback uses that approved scope; it
+does not require the old plan-review base to equal the new base. Implementation
+and repair approval gates still require a current plan pass.
 
 The runner captures the three-dot diff, committed base and head files, approved
 proposal, PR comments, prior reviews and Actions results for that head. The
@@ -412,23 +414,50 @@ skipped when duplicate evidence or verified completion requires no model call.
 
 ## Child delivery enrollment
 
-Keep the existing builder App grants. Add `closed` to the caller's
-`pull_request_target.types` so merged child PRs refresh parent progress. No new
+Keep the existing builder App grants and pin the caller to the reviewed tooling
+commit. Restrict `pull_request_target.branches` to the default branch:
+privileged review of a child PR runs from the default-branch `workflow_run`
+caller after its enrolled CI completes. Never execute privileged review from a
+child base.
+
+The enrolled CI must test child PRs and parent branch pushes. Preserve existing
+CI jobs and extend its triggers:
+
+```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main, "claude/issue-*"]
+```
+
+Use your default branch in place of `main`. Parent branch push CI is necessary
+because the first child integration happens before the parent PR exists. Leaf
+pushes also run CI, but only PR runs supply reviewer and repair evidence. No new
 role, secret, environment or specialist model is required.
 
-Fable can propose independently testable deliverables with native issue
-dependencies. After the parent review passes, apply `ready for dev` to authorize
-child creation. Each child starts discovery automatically in the parent context;
-review and apply its own `ready for dev` before code work. Parent authorization
-never authorizes all child implementations at once.
+Fable proposes independently testable child deliverables. Parent `ready for dev`
+authorizes the integration branch and child discovery. Each child still needs
+its own reviewed checkpoint and owner `ready for dev` before implementation.
+Original issue descriptions remain unchanged; new checkpoints record revised
+scope and current inherited parent decisions.
 
-Until stacked delivery is enabled, prerequisites must have an App PR merged into
-the default branch before dependent implementation starts. Closing an issue is
-insufficient. If authorization was attempted too early, wait for the
-prerequisite merge, then remove and reapply the child's `ready for dev` label.
+Every child targets `claude/issue-<parent>`, or its approved prerequisite branch
+within a native stack. The parent integration PR is never a layer in a child
+stack. Native stacks are linear: integrate parallel prerequisites before
+starting a child that joins them. A nested parent also waits for its
+prerequisites to integrate before starting its own integration branch.
 
-Keep the parent open until its overall acceptance criteria are verified. Its
-maintained delivery summary shows verified child merges, without automatically
-closing the parent or creating an umbrella PR. Changing the parent checkpoint
-invalidates inherited scope: replan and review affected children before
-resuming.
+After the first verified child merge, trusted tooling opens the parent draft PR.
+Its maintained summary distinguishes integrated work from delivery to main.
+Children stay open. Once all current children integrate and the parent PR's own
+combined CI passes, tooling marks the parent ready for independent review and
+owner merge. Combined CI failures can invoke bounded repair while the parent is
+draft, once all children are integrated. The top-level parent PR carries closing
+references for its descendants; merging it to main delivers and closes the
+complete feature.
+
+Merge native stacks using GitHub's asynchronous merge API; the legacy merge
+endpoint cannot merge a native stack. Review and merge bottom-up, retaining
+required checks. Downstream refresh preserves concurrent commits, uses an exact
+head lease, and blocks conflicts for explicit repair. No agent auto-merges.

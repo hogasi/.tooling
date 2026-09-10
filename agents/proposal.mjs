@@ -14,6 +14,19 @@ export function latestComment({ comments, login, marker }) {
     .toSorted((left, right) => right.id - left.id)[0];
 }
 
+export function readCheckpoint(context, id, callGitHub = githubRequest) {
+  const comment = readComments(context, callGitHub).find(
+    (entry) =>
+      entry.id === id &&
+      entry.user?.login === context.appLogin &&
+      entry.body?.startsWith(PROPOSAL)
+  );
+  if (!comment) {
+    throw new Error("Original parent checkpoint is missing");
+  }
+  return checkpoint(comment);
+}
+
 export function readComments(context, callGitHub = githubRequest) {
   return readPages(
     `repos/${context.repository}/issues/${context.issueNumber}/comments`,

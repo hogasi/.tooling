@@ -10,6 +10,7 @@
     "agents/review-run.mjs",
     "agents/planning-run.mjs",
     "agents/delivery-run.mjs",
+    "agents/stack-run.mjs",
     "agents/repair-run.mjs",
     "agents/route-run.mjs",
     "packages/*/*.test.mjs",
@@ -35,18 +36,50 @@
     "thresholdOverrides": [
       {
         "files": [
+          "agents/parent-integration.mjs",
+          "agents/parent-integration.test.mjs",
+          "agents/stack.mjs",
+          "agents/stack-refresh.mjs",
+          "agents/stack-review.mjs",
+          "agents/stack-target.mjs"
+        ],
+        "functions": [
+          "read",
+          "request",
+          "integrationIssue",
+          "updateParentPull",
+          "readParentPull",
+          "readStack",
+          "appendStack",
+          "refreshBase",
+          "isCurrentCiSource",
+          "parentRunIssue",
+          "parentIntegrationRoute",
+          "stackReviewRoute",
+          "dependentTarget"
+        ],
+        "maxCrap": 73,
+        "reason": "Estimated CRAP does not measure node:test coverage. Parent and stack tests verify parent-only delivery, branch preservation, current combined CI, draft repair boundaries, forged and stale sources, exact-head refresh, conflicts, and duplicate native stack registration. Cyclomatic and cognitive limits remain unchanged."
+      },
+      {
+        "files": [
           "agents/delivery.mjs",
           "agents/delivery-scope.mjs",
           "agents/delivery-plan.mjs",
           "agents/delivery-progress.mjs",
           "agents/delivery-evidence.mjs",
-          "agents/delivery.test.mjs"
+          "agents/delivery.test.mjs",
+          "agents/delivery-fixture.mjs"
         ],
         "functions": [
           "mergedChildIssue",
           "read",
           "write",
-          "requireParent",
+          "readParent",
+          "claimChildScope",
+          "matches",
+          "verifiedIntegration",
+          "request",
           "<arrow>",
           "validateChild",
           "resolveChildDiscovery",
@@ -75,7 +108,9 @@
           "requireReviewSource",
           "approvedEvidence",
           "repairEvidence",
-          "routeEvent"
+          "routeEvent",
+          "repairDecision",
+          "implementationDecision"
         ],
         "maxCrap": 73,
         "reason": "Estimated CRAP does not measure node:test coverage. Repair tests exercise authenticated source jobs, stale and foreign inputs, drafts, revoked scope, duplicate claims, CI supersession and verified cycle completion. CLI routing tests cover disabled and forged events. Other complexity limits remain unchanged."
@@ -87,7 +122,8 @@
           "publishPlanning",
           "publishCheckpoint",
           "publishSummary",
-          "validateResult"
+          "validateResult",
+          "requirePlanningSnapshot"
         ],
         "maxCrap": 57,
         "reason": "Estimated CRAP does not measure node:test coverage. planning.test.mjs exercises ordered publication, discovery, checkpoint reuse, stale scope, revoked authorization, malformed output and failed summary writes. Other complexity limits stay unchanged."
@@ -106,13 +142,17 @@
       },
       {
         "files": ["agents/review-run.mjs"],
-        "functions": ["preparePullRequest", "preparePlan"],
+        "functions": ["preparePullRequest", "preparePlan", "reviewSource"],
         "maxCrap": 73,
         "reason": "Estimated CRAP does not measure node:test coverage. review-run.test.mjs invokes both CLI modes against a real Git repository and fake GitHub transport, including publication and duplicate suppression. Keep cyclomatic and cognitive limits unchanged."
       },
       {
         "files": ["agents/pull-request.mjs"],
-        "functions": ["pullRequestIssue", "routePullRequest"],
+        "functions": [
+          "pullRequestIssue",
+          "routePullRequest",
+          "isImplementationPull"
+        ],
         "maxCrap": 57,
         "reason": "Estimated CRAP does not measure node:test coverage. route.test.mjs and pr-review.test.mjs exercise the shared eligibility policy through routing and live publication checks. Keep cyclomatic and cognitive limits unchanged."
       },
@@ -150,7 +190,7 @@
         "reason": "Estimated CRAP marks this private validator untested. codex-auth.test.mjs exercises it through restoreAuth and persistAuth with valid subscription auth, malformed JSON, null, missing tokens, API auth and mixed auth. Keep cyclomatic and cognitive limits unchanged."
       },
       {
-        "files": ["agents/approval.mjs"],
+        "files": ["agents/approval.mjs", "agents/authorization-record.mjs"],
         "functions": [
           "latestApproval",
           "readIssue",

@@ -39,6 +39,8 @@ jobs:
     outputs:
       automatic: ${{ steps.decide.outputs.automatic }}
       discovery: ${{ steps.decide.outputs.discovery }}
+      writer: ${{ steps.writer.outputs.writer || steps.decide.outputs.writer }}
+      stack_pull: ${{ steps.decide.outputs.stack_pull }}
       head: ${{ steps.decide.outputs.head }}
       owner: ${{ steps.decide.outputs.owner }}
       pull: ${{ steps.decide.outputs.pull }}
@@ -170,6 +172,22 @@ jobs:
               ;;
           esac
           echo "issue=${issue}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve the shared dependency writer
+        id: writer
+        if:
+          steps.decide.outputs.role == 'implementer' ||
+          steps.decide.outputs.role == 'delivery-tracker'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+          ISSUE:
+            ${{ steps.decide.outputs.issue || steps.work-key.outputs.issue }}
+          AI_CI_WORKFLOW: ${{ vars.AI_CI_WORKFLOW }}
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: node _tooling/agents/stack-run.mjs writer
 
       - name: Record the decision
         env:
@@ -471,7 +489,9 @@ jobs:
     with:
       mode: pr
       issue: ${{ needs.route.outputs.issue }}
-      pull-request: ${{ format('{0}', github.event.pull_request.number) }}
+      pull-request:
+        ${{ needs.route.outputs.pull || format('{0}',
+        github.event.pull_request.number) }}
       builder-login: ${{ needs.route.outputs.builder_login }}
       model: ${{ needs.route.outputs.model }}
       effort: ${{ needs.route.outputs.effort }}
@@ -488,7 +508,9 @@ jobs:
       contents: read
     with:
       phase: implementer
-      pull-request: ${{ format('{0}', github.event.pull_request.number) }}
+      pull-request:
+        ${{ needs.route.outputs.pull || format('{0}',
+        github.event.pull_request.number) }}
       source: ${{ github.run_id }}
     secrets:
       AI_APP_ID: ${{ secrets.AI_APP_ID }}
@@ -500,7 +522,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     concurrency:
-      group: ai-write-${{ github.repository }}-${{ needs.route.outputs.issue }}
+      group: ai-write-${{ github.repository }}-${{ needs.route.outputs.writer }}
       cancel-in-progress: false
       queue: max
     permissions:
@@ -517,15 +539,60 @@ jobs:
           client-id: ${{ secrets.AI_APP_ID }}
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
           permission-issues: write
-          permission-pull-requests: read
+          permission-pull-requests: write
+          permission-actions: read
+          permission-contents: read
           permission-metadata: read
       - name: Update parent delivery evidence
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           APP_LOGIN: ${{ steps.token.outputs.app-slug }}[bot]
           ISSUE: ${{ needs.route.outputs.issue }}
+          AI_CI_WORKFLOW: ${{ vars.AI_CI_WORKFLOW }}
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: node agents/delivery-run.mjs progress
+
+  stack-refresh:
+    needs: route
+    if: needs.route.outputs.stack_pull != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: ai-write-${{ github.repository }}-${{ needs.route.outputs.writer }}
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/create-github-app-token@v3.2.0
+        id: token
+        with:
+          client-id: ${{ secrets.AI_APP_ID }}
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-actions: read
+          permission-issues: write
+          permission-pull-requests: write
+          permission-metadata: read
+      - name: Refresh dependent branches with current-head checks
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          APP_LOGIN: ${{ steps.token.outputs.app-slug }}[bot]
+          ISSUE: ${{ needs.route.outputs.issue }}
+          PULL_REQUEST: ${{ needs.route.outputs.stack_pull }}
+          AI_CI_WORKFLOW: ${{ vars.AI_CI_WORKFLOW }}
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EXPECTED_WRITER: ${{ needs.route.outputs.writer }}
+        run: node agents/stack-run.mjs refresh
 
   implement:
     name: Implement
@@ -542,7 +609,7 @@ jobs:
     # nobody can reason about, and its own push or a review arriving is not a
     # reason to stop it.
     concurrency:
-      group: ai-write-${{ github.repository }}-${{ needs.route.outputs.issue }}
+      group: ai-write-${{ github.repository }}-${{ needs.route.outputs.writer }}
       cancel-in-progress: false
       queue: max
     permissions:
@@ -570,25 +637,6 @@ jobs:
           set -euo pipefail
           mkdir -p "${HOME}/.claude"
           cp "${RUNNER_TEMP}/tooling/agents/vendor/coding-style.md" "${HOME}/.claude/CLAUDE.md"
-
-      - name: Build the implementer prompt
-        id: prompt
-        env:
-          EFFORT: ${{ needs.route.outputs.effort }}
-          ISSUE: ${{ needs.route.outputs.issue }}
-          MODEL: ${{ needs.route.outputs.model }}
-        run: |
-          set -euo pipefail
-          delimiter="PROMPT_$(openssl rand -hex 16)"
-          {
-            printf 'text<<%s\n' "$delimiter"
-            cat "${RUNNER_TEMP}/tooling/agents/implementer.md"
-            printf '\n'
-            cat "${RUNNER_TEMP}/tooling/agents/voice.md"
-            printf '\n## This run\n\n- Repository: %s\n- Issue: #%s\n- Branch: claude/issue-%s\n- Model: %s at %s effort\n' \
-              "$GITHUB_REPOSITORY" "$ISSUE" "$ISSUE" "$MODEL" "$EFFORT"
-            printf '%s\n' "$delimiter"
-          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/create-github-app-token@v3.2.0
         id: approval-token
@@ -658,9 +706,37 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+          AI_CI_WORKFLOW: ${{ vars.AI_CI_WORKFLOW }}
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PULL_REQUEST:
+            ${{ needs.route.outputs.pull || (github.event.issue.pull_request &&
+            github.event.issue.number) || '' }}
           ISSUE: ${{ needs.route.outputs.issue }}
+          EXPECTED_WRITER: ${{ needs.route.outputs.writer }}
         run: node "${RUNNER_TEMP}/tooling/agents/delivery-run.mjs" create
+
+      - name: Build the implementer prompt
+        id: prompt
+        env:
+          EFFORT: ${{ needs.route.outputs.effort }}
+          ISSUE: ${{ needs.route.outputs.issue }}
+          BASE: ${{ steps.delivery.outputs.base }}
+          MODEL: ${{ needs.route.outputs.model }}
+        run: |
+          set -euo pipefail
+          delimiter="PROMPT_$(openssl rand -hex 16)"
+          {
+            printf 'text<<%s\n' "$delimiter"
+            cat "${RUNNER_TEMP}/tooling/agents/implementer.md"
+            printf '\n'
+            cat "${RUNNER_TEMP}/tooling/agents/voice.md"
+            printf '\n## This run\n\n- Repository: %s\n- Issue: #%s\n- Branch: claude/issue-%s\n- Model: %s at %s effort\n' \
+              "$GITHUB_REPOSITORY" "$ISSUE" "$ISSUE" "$MODEL" "$EFFORT"
+            printf '\n- Approved base branch: %s\n' "$BASE"
+            printf '%s\n' "$delimiter"
+          } >> "$GITHUB_OUTPUT"
 
       # The queued approval and repair claim precede credentials that can push.
       - uses: actions/checkout@v7
@@ -668,6 +744,7 @@ jobs:
           steps.correction.outputs.claimed == 'true' &&
           steps.delivery.outputs.leaf == 'true'
         with:
+          ref: ${{ steps.delivery.outputs.base }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
@@ -723,6 +800,19 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app-token.outputs.token }}
           prompt: ${{ steps.prompt.outputs.text }}
+
+      - name: Register the native stack and refresh dependent branches
+        if: success() && steps.delivery.outputs.leaf == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+          ISSUE: ${{ needs.route.outputs.issue }}
+          AI_CI_WORKFLOW: ${{ vars.AI_CI_WORKFLOW }}
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EXPECTED_WRITER: ${{ needs.route.outputs.writer }}
+        run: node "${RUNNER_TEMP}/tooling/agents/stack-run.mjs" finish
 
       - name: Replace the reaction with the outcome
         if: always() && steps.reaction.outputs.target != ''

@@ -6,12 +6,14 @@ import {
   beginPullRequestReview,
   publishPullRequestReview
 } from "./pr-review.mjs";
+import { resolveCiWorkflow } from "./repair-evidence.mjs";
 import {
   pullRequestSnapshot,
   repositorySnapshot,
   requireInputSize
 } from "./review-snapshot.mjs";
 import { beginReview, publishReview } from "./review.mjs";
+import { readStackReviewSource } from "./stack-review.mjs";
 
 const environment = process.env;
 if (!environment.RUNNER_TEMP) {
@@ -116,17 +118,11 @@ function preparePlan(event) {
   return { ...review, files };
 }
 function preparePullRequest(event) {
-  if (
-    environment.GITHUB_EVENT_NAME !== "pull_request_target" ||
-    !["opened", "ready_for_review", "synchronize"].includes(event.action) ||
-    event.pull_request?.number !== Number(context.pullRequestNumber)
-  ) {
-    throw new Error("Invalid PR review event");
-  }
+  const source = reviewSource(event);
   const review = beginPullRequestReview({
     ...context,
-    eventBase: event.pull_request.base?.sha,
-    eventHead: event.pull_request.head?.sha
+    eventBase: source.base.sha,
+    eventHead: source.head.sha
   });
   if (!review) {
     return null;
@@ -140,4 +136,30 @@ function preparePullRequest(event) {
 }
 function readJson(name) {
   return JSON.parse(readFileSync(file(name), "utf8"));
+}
+
+function reviewSource(event) {
+  if (environment.GITHUB_EVENT_NAME === "workflow_run") {
+    return stackSource(event);
+  }
+  if (
+    environment.GITHUB_EVENT_NAME !== "pull_request_target" ||
+    !["opened", "ready_for_review", "synchronize"].includes(event.action) ||
+    event.pull_request?.number !== Number(context.pullRequestNumber)
+  ) {
+    throw new Error("Invalid PR review event");
+  }
+  return event.pull_request;
+}
+
+function stackSource(event) {
+  const source = readStackReviewSource({
+    ...context,
+    ciWorkflow: resolveCiWorkflow(environment.AI_CI_WORKFLOW),
+    sourceRunId: String(event.workflow_run?.id)
+  });
+  if (!source || source.pull.number !== Number(context.pullRequestNumber)) {
+    throw new Error("Stale or invalid stack review event");
+  }
+  return source.pull;
 }
