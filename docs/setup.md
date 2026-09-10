@@ -426,15 +426,18 @@ CI jobs and extend its triggers:
 ```yaml
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   push:
     branches: [main, "claude/issue-*"]
 ```
 
 Use your default branch in place of `main`. Parent branch push CI is necessary
-because the first child integration happens before the parent PR exists. Leaf
-pushes also run CI, but only PR runs supply reviewer and repair evidence. No new
-role, secret, environment or specialist model is required.
+because the first child integration happens before the parent PR exists.
+Retargeting uses the `edited` event, so include it even when the head commit
+does not change. Parent PR bodies are updated only when delivery evidence
+changes, preventing unchanged progress from retriggering CI. Leaf pushes also
+run CI, but only PR runs supply reviewer and repair evidence. No new role,
+secret, environment or specialist model is required.
 
 Fable proposes independently testable child deliverables. Parent `ready for dev`
 authorizes the integration branch and child discovery. Each child still needs

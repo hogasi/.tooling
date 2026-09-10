@@ -283,3 +283,12 @@ test("parent delivery rejects a child whose only passing CI belongs to another P
   assert.equal(delivery.deliveries[0].integration, null);
   assert.equal(updateParentPull(context, request), null);
 });
+
+test("unchanged parent progress does not edit the PR or retrigger edited CI", () => {
+  const state = fixture();
+  state.pull.merged_at = "2026-09-10T15:00:00Z";
+  updateParentPull(context, state.request);
+  const writes = state.writes.length;
+  updateParentPull(context, state.request);
+  assert.equal(state.writes.length, writes);
+});
