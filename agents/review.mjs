@@ -83,7 +83,7 @@ export function requirePlanReview(context, callGitHub = githubRequest) {
     record.sha !== currentSha(context, callGitHub)
   ) {
     throw new Error(
-      "No current passing plan review; remove and reapply ready to callGitHub review"
+      "No current passing plan review; remove and reapply ready to request review"
     );
   }
 }
