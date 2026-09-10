@@ -174,24 +174,15 @@ function stackSource(event) {
 }
 
 function toolingSnapshot() {
-  const paths = [
-    ".github/workflows/ai.yml",
-    "agents/delivery-run.mjs",
-    "agents/delivery.mjs",
-    "agents/delivery-scope.mjs",
-    "agents/parent-integration.mjs",
-    "agents/stack-target.mjs",
-    "agents/delivery-evidence.mjs",
-    "agents/stack.mjs",
-    "agents/stack-refresh.mjs",
-    "agents/planning.mjs"
-  ];
   const files = repositorySnapshot({
     directory: fileURLToPath(new URL("..", import.meta.url)),
-    paths,
+    include: (name) =>
+      name === ".github/workflows/ai.yml" ||
+      (name.endsWith(".mjs") && !/(?:\.test|fixture)\.mjs$/.test(name)),
+    paths: [".github/workflows/ai.yml", "agents"],
     sha: environment.TOOLING_SHA
   });
-  if (files.length !== paths.length) {
+  if (files.every((file) => file.name !== "agents/route-run.mjs")) {
     throw new Error("Pinned tooling snapshot is incomplete");
   }
   return { files, sha: environment.TOOLING_SHA };

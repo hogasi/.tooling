@@ -228,10 +228,19 @@ test("plan review receives off-main PR code and the pinned parent workflow imple
     data.pullRequests[0].files.find((file) => file.name === "app.js").content,
     "export const value = 2;\n"
   );
-  assert.ok(
-    data.tooling.files.some(
-      (file) => file.name === "agents/parent-integration.mjs"
-    )
+  for (const name of [
+    "agents/parent-integration.mjs",
+    "agents/route-run.mjs",
+    "agents/stack-review.mjs",
+    "agents/repair-evidence.mjs"
+  ]) {
+    assert.ok(data.tooling.files.some((file) => file.name === name));
+  }
+  assert.equal(
+    data.tooling.files.some((file) =>
+      /(?:\.test|fixture)\.mjs$/.test(file.name)
+    ),
+    false
   );
   const current = read();
   const writes = current.writes.length;
