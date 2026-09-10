@@ -17,10 +17,12 @@ import { fileURLToPath } from "node:url";
 
 const APPROVED_LABEL = "approved";
 const AUTHORIZED_ASSOCIATIONS = new Set(["COLLABORATOR", "MEMBER", "OWNER"]);
+const OWNER_ASSOCIATION = "OWNER";
 const READY_LABEL = "ready";
 const REPAIR_PATTERN = /(?:^|\s)@claude(?![\w-])/i;
 const REPAIR_PHRASE = "@claude";
 const REPLAN_PATTERN = /(?:^|\s)@claude\s+replan\b/i;
+const WRITE_PERMISSIONS = new Set(["admin", "write"]);
 
 /**
  * `ultracode` is a supported `--effort` value and is deliberately missing: it
@@ -52,11 +54,31 @@ const unquoted = (body) =>
  * contributor's issue and admit the reverse. The association is used only when
  * it describes the sender; labelling is instead authorised in the approval job,
  * which has a token that can read the labeller's real repository permission.
+ *
+ * The association is also a social label rather than a grant: MEMBER says only
+ * that the sender belongs to the org, and COLLABORATOR that they are listed on
+ * the repository, neither of which implies write access. So the sender's real
+ * repository permission, read back in the route job, decides. OWNER is the
+ * exception — it is the account the repository belongs to — and the
+ * associations stay in use for the message, which is the difference between a
+ * stranger and a read-only insider.
  */
-const associationAuthority = ({ authorAssociation, senderLogin }) =>
-  AUTHORIZED_ASSOCIATIONS.has(authorAssociation)
-    ? ""
+const associationAuthority = ({
+  authorAssociation,
+  senderLogin,
+  senderPermission
+}) => {
+  if (
+    authorAssociation === OWNER_ASSOCIATION ||
+    WRITE_PERMISSIONS.has(senderPermission)
+  ) {
+    return "";
+  }
+
+  return AUTHORIZED_ASSOCIATIONS.has(authorAssociation)
+    ? `${senderLogin} does not have write access to this repository`
     : `${senderLogin} has no write relationship with this repository`;
+};
 
 const labelAuthority = ({ action, eventName, senderLogin }) =>
   eventName === "issues" && action === "labeled"
@@ -83,6 +105,7 @@ const readEvent = (environment) => ({
   labelName: text(environment.EVENT_LABEL),
   labels: environment.EVENT_LABELS ? JSON.parse(environment.EVENT_LABELS) : [],
   senderLogin: text(environment.EVENT_SENDER),
+  senderPermission: text(environment.EVENT_SENDER_PERMISSION),
   senderType: text(environment.EVENT_SENDER_TYPE)
 });
 
@@ -157,17 +180,32 @@ const routes = new Map([
   ]
 ]);
 
+const gatedRole = ({ approval, role }) => {
+  if (role !== "") {
+    return role;
+  }
+
+  return approval === "none" ? "" : "implementer";
+};
+
 /**
  * The approval state matters only to the implementer, so a decision that
- * carries no role — an edit that invalidates an approval — is gated on the
- * implementer being enabled.
+ * carries no role but does carry approval work — an edit that invalidates an
+ * approval — is gated on the implementer being enabled. A decision that starts
+ * nothing at all is already the answer, and gating it would replace the reason
+ * the run was skipped with a misleading one about AI_ROLES.
  */
 export function decide(environment) {
   const decision = resolveRoute(readEvent(environment));
-  const enabled = resolveEnabledRoles(environment.AI_ROLES);
-  const gate = decision.role === "" ? "implementer" : decision.role;
+  const gate = gatedRole(decision);
 
-  return enabled.has(gate) ? decision : skip(`${gate} is not in AI_ROLES`);
+  if (gate === "") {
+    return decision;
+  }
+
+  return resolveEnabledRoles(environment.AI_ROLES).has(gate)
+    ? decision
+    : skip(`${gate} is not in AI_ROLES`);
 }
 
 export function resolveEffort({ fallback, override }) {

@@ -47,6 +47,38 @@ jobs:
           ref: ${{ job.workflow_sha }}
           repository: ${{ job.workflow_repository }}
 
+      - uses: actions/create-github-app-token@v3.2.0
+        id: app-token
+        if: github.event.sender.type == 'User'
+        with:
+          client-id: ${{ secrets.AI_APP_ID }}
+          # Administration read is only for reading back the sender's
+          # repository permission; the collaborator endpoint needs it, and no
+          # token available to this job can read it without the App.
+          permission-administration: read
+          permission-metadata: read
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+
+      # The router needs the sender's real permission because
+      # `author_association` is a social label: MEMBER and COLLABORATOR say
+      # nothing about write access, and admitting them lets a read-only account
+      # spend the subscription on a run the approval job would then refuse.
+      - name: Read the sender's repository permission
+        id: sender
+        if: github.event.sender.type == 'User'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SENDER: ${{ github.event.sender.login }}
+        run: |
+          set -euo pipefail
+          # A non-collaborator answers "none". Anything else — a deleted
+          # account, an API failure — denies rather than guesses, and says so.
+          if ! permission=$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${SENDER}/permission" --jq '.permission'); then
+            echo "::warning::Could not read ${SENDER}'s repository permission; treating it as none."
+            permission=none
+          fi
+          echo "permission=${permission}" >> "$GITHUB_OUTPUT"
+
       - name: Decide what this event starts
         id: decide
         env:
@@ -71,6 +103,7 @@ jobs:
           EVENT_LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_SENDER: ${{ github.event.sender.login }}
+          EVENT_SENDER_PERMISSION: ${{ steps.sender.outputs.permission }}
           EVENT_SENDER_TYPE: ${{ github.event.sender.type }}
         run: node _tooling/agents/route.mjs
 

@@ -235,13 +235,17 @@ An unchanged approval whose digest is already the latest active record does not
 append another comment on retry. New records include the Actions run ID for
 traceability. Repairs resume the existing work and still require verification.
 
-The router uses sender type and `author_association` as a preliminary filter,
-admitting human `OWNER`, `MEMBER`, and `COLLABORATOR` accounts when the
-association belongs to the sender. Label events defer authority to the approval
-job because the issue's association describes its author. Actual repository
-write access is checked by every approval operation and again by the Claude
-Action before it runs. Neither `allowed_bots` nor `allowed_non_write_users` is
-enabled. This stops a read-only member's replan request from removing approval
+The router admits human accounts whose repository permission is `admin` or
+`write`, read back in the route job with an App token, plus the `OWNER`
+association, which is the account the repository belongs to.
+`author_association` is otherwise only a social label — `MEMBER` says the sender
+is in the org and `COLLABORATOR` that they are listed on the repository, neither
+of which grants write access — so it decides nothing on its own, and is used to
+explain a refusal. Label events defer authority to the approval job because the
+issue's association describes its author. Repository write access is checked
+again by every approval operation and by the Claude Action before it runs.
+Neither `allowed_bots` nor `allowed_non_write_users` is enabled. This stops a
+read-only member from spending the subscription on a run, or removing approval
 with the App token.
 
 The router distinguishes issue comments from pull request comments through

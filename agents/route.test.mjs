@@ -393,3 +393,60 @@ test("a repository variable overrides only its own role", () => {
 test("no role means no model to resolve", () => {
   assert.deepEqual(settingsFor("", {}), { effort: "", model: "" });
 });
+
+test("an admin reported as CONTRIBUTOR can start planner-only discovery", () => {
+  const decision = decide({
+    AI_ROLES: "planner",
+    EVENT_ACTION: "opened",
+    EVENT_ASSOCIATION_SUBJECT: "silviuhogasi",
+    EVENT_AUTHOR_ASSOCIATION: "CONTRIBUTOR",
+    EVENT_NAME: "issues",
+    EVENT_SENDER: "silviuhogasi",
+    EVENT_SENDER_PERMISSION: "admin",
+    EVENT_SENDER_TYPE: "User"
+  });
+
+  assert.equal(decision.role, "planner");
+  assert.equal(decision.reason, "a new issue starts discovery");
+});
+
+for (const senderPermission of ["read", "triage", "none", "", "unknown"]) {
+  test(`${senderPermission || "missing"} permission cannot use MEMBER association to start discovery`, () => {
+    const decision = resolveRoute(
+      ownerEvent({ authorAssociation: "MEMBER", senderPermission })
+    );
+    assert.equal(decision.role, "");
+    assert.match(decision.reason, /write access/);
+  });
+}
+
+test("a rejected sender keeps the authorization reason in planner-only mode", () => {
+  const decision = decide({
+    AI_ROLES: "planner",
+    EVENT_ACTION: "opened",
+    EVENT_ASSOCIATION_SUBJECT: "reader",
+    EVENT_AUTHOR_ASSOCIATION: "MEMBER",
+    EVENT_NAME: "issues",
+    EVENT_SENDER: "reader",
+    EVENT_SENDER_PERMISSION: "read",
+    EVENT_SENDER_TYPE: "User"
+  });
+  assert.match(decision.reason, /write access/);
+  assert.doesNotMatch(decision.reason, /AI_ROLES/);
+});
+
+test("an ignored event keeps its original reason in planner-only mode", () => {
+  const decision = decide({
+    AI_ROLES: "planner",
+    EVENT_ACTION: "created",
+    EVENT_ASSOCIATION_SUBJECT: "silviuhogasi",
+    EVENT_AUTHOR_ASSOCIATION: "OWNER",
+    EVENT_COMMENT_BODY: "looks good",
+    EVENT_LABELS: '["ready","approved"]',
+    EVENT_NAME: "issue_comment",
+    EVENT_SENDER: "silviuhogasi",
+    EVENT_SENDER_PERMISSION: "admin",
+    EVENT_SENDER_TYPE: "User"
+  });
+  assert.match(decision.reason, /ordinary comment restarts nothing/);
+});
