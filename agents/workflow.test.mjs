@@ -261,6 +261,14 @@ test("routing can read branch refs without repository write authority", () => {
   assert.doesNotMatch(job("route"), /permission-[\w-]+: write/);
 });
 
+test("parent tracking can change readiness using only the pinned tooling", () => {
+  const tracker = job("delivery-progress");
+  assert.match(tracker, /permission-contents: write/);
+  assert.match(tracker, /permission-pull-requests: write/);
+  assert.match(tracker, /repository: \$\{\{ job.workflow_repository \}\}/);
+  assert.doesNotMatch(tracker, /claude-code-action|pnpm install|npm install/);
+});
+
 test("routing knows the App's own login so the planner can ask for review", () => {
   const route = job("route");
 
