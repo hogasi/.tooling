@@ -259,7 +259,12 @@ implementation model.
 `agents/delivery-scope.mjs` verifies inherited checkpoint identity, exact child
 scope, parent authorization and native links during planning and approval.
 `agents/delivery-evidence.mjs` verifies reviewed child integrations into their
-parent branch, including current approved scope and enrolled CI.
+parent branch, including current approved scope and enrolled CI. GitHub clears a
+CI run's PR list after merge. For merged children only, the reader can recover
+the association from the matching repository, workflow, head and branch, with
+the run created during the PR's lifetime and exactly one PR ever using that
+branch. Ambiguous branch reuse fails visibly; supporting it requires persisted
+PR/run bindings. Open PRs still require direct PR association.
 `agents/delivery-progress.mjs` maintains one parent summary after child PR
 merges. Original issue bodies and previous checkpoints remain intact.
 
