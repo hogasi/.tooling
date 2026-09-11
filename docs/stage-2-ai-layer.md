@@ -13,7 +13,7 @@ stale approval rejection, implementation, deliberate PR defect detection, manual
 repair, new-head review and duplicate suppression on September 10, 2026.
 [PR #10](https://github.com/hogasi/ai-sandbox/pull/10) holds the PR evidence.
 
-Workflow v2 is being delivered in three increments:
+Workflow v2 passed its three live sandbox increments:
 
 1. **Proposal records and approval:** implemented and live-tested, including
    unchanged original requests and repair after an unrelated main update.
@@ -23,10 +23,10 @@ Workflow v2 is being delivered in three increments:
    CI/PR repair and early draft publication are implemented and live-tested;
    duplicate competing repairs were suppressed and the repair budget reset.
 3. **Child delivery:** native links, inherited scope and separate authorization
-   are implemented; live validation is pending. Parent issues hold shared goals;
-   children have their own reviewed deliverable and authorization. Independent
-   PRs target their parent integration branch. Dependencies can form native
-   stacks within that parent; only the top-level parent PR targets main.
+   are implemented and live-tested. Parent issues hold shared goals; children
+   have their own reviewed deliverable and authorization. Independent PRs target
+   their parent integration branch. Dependencies can form native stacks within
+   that parent; only the top-level parent PR targets main.
 
 Do not enable future handoffs by simply allowing arbitrary bots. Trusted code
 must authenticate the source, re-read current state and claim each attempt.
@@ -289,14 +289,13 @@ The reviewer carries the enrolled CI workflow through dependency checks so a
 verified child merge can satisfy the next layer's prerequisite.
 `agents/stack-review.mjs` authenticates CI handoffs so privileged review
 continues to run from the default branch. One parent-family writer serializes
-branch mutations; the parent PR is excluded from child stacks. These changes
-still require the live parent and stack rollout tests before claiming deployment
-complete.
+branch mutations; the parent PR is excluded from child stacks. Both parent
+release scenarios passed the live rollout checks below.
 
 ### Parent integration rollout evidence
 
-The sandbox caller pins `4ab7ebdb8c977a41195a0fc2a9e447d9e045d97a` after
-[sandbox PR #47](https://github.com/hogasi/ai-sandbox/pull/47). All 356 tooling
+The sandbox caller pins `dd00f23d817b27d8d0f99d8591d3f1325a20e6df` after
+[sandbox PR #48](https://github.com/hogasi/ai-sandbox/pull/48). All 362 tooling
 tests and required checks passed.
 
 Claude execution recovered during the September 11, 2026 sandbox tests. Fresh
@@ -308,9 +307,8 @@ establish an account-limit or authentication cause.
   [#28](https://github.com/hogasi/ai-sandbox/pull/28) were retargeted and merged
   into `claude/issue-25`. The first verified integration opened
   [parent draft #43](https://github.com/hogasi/ai-sandbox/pull/43) while its
-  sibling remained pending. Both children are now integrated; combined local
-  checks passed 20 tests and parent CI passed. Child issues remain open until
-  the parent release reaches main.
+  sibling remained pending. Combined local checks passed 20 tests and parent CI
+  passed. Child issues stayed open until the parent release reached main.
 - Native stack [#40](https://github.com/hogasi/ai-sandbox/pull/38) contained PRs
   #38 and #39 inside `claude/issue-31`. Merging #38 through GitHub's
   asynchronous merge API opened
@@ -348,5 +346,34 @@ Automatic parent readiness passed after
 [tooling #34](https://github.com/hogasi/.tooling/pull/34) granted the explicitly
 approved `contents: write` permission to the pinned-tooling tracker. GitHub's
 timelines show `hogasi-ai[bot]` marking both completed parents ready after their
-combined CI passed. Parent reviews and final release verification are in
-progress.
+combined CI passed.
+
+Evidence-only parent repairs were deployed through
+[tooling #35](https://github.com/hogasi/.tooling/pull/35). Review inputs now
+include the PR body and comment fingerprint, so changed verification records can
+receive a fresh verdict without a code commit. Publication rejects evidence that
+changed during review; historical merged-child verdicts remain valid.
+[Opus repair 34574550918](https://github.com/hogasi/ai-sandbox/actions/runs/34574550918)
+passed 22 tests and preserved head `6c6db199107be521f0720161322ff245573027b2`.
+The App converted parent #44 to draft at 07:29:31 UTC and restored readiness at
+07:32:46 UTC after trusted integration and CI checks.
+[Astra review 34574889085](https://github.com/hogasi/ai-sandbox/actions/runs/34574889085)
+passed on the same code head with the updated evidence. Evidence stays in PR
+comments because the tracker maintains the canonical body.
+
+Parent #44 merged to main as `5cc8d055323d7c2ca8544c9b71f3370a99b01087`,
+automatically closing #31, #34 and #35. Its main CI passed. Queued handoffs that
+reached approval after release rejected the now-closed issue before further
+implementation; those stale runs are expected failures, not release CI failures.
+
+After that release, parent #43 refreshed against main and retained exactly its
+six approved files. The combined 31-test suite and
+[Astra review 34575107317](https://github.com/hogasi/ai-sandbox/actions/runs/34575107317)
+passed on head `979c931ab80f0a7aefaeee6728c19ed176dc11cf`. Its merge
+`d191f5a11b06a84b7278ee982965fb8bdc45390b` automatically closed #25, #26 and
+#27.
+[Final main CI 34575383118](https://github.com/hogasi/ai-sandbox/actions/runs/34575383118)
+and local checks passed all 31 tests. Post-release comparisons confirmed all six
+original issue bodies unchanged and GitHub reported zero content edits. Both
+parent releases are complete; all child changes reached main through their
+parent integration PRs.
