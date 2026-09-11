@@ -543,7 +543,8 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
           permission-actions: read
-          permission-contents: read
+          # GitHub's draft/readiness GraphQL mutations require repository write access.
+          permission-contents: write
           permission-metadata: read
       - name: Update parent delivery evidence
         env:
