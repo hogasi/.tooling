@@ -1,6 +1,7 @@
 import { setTimeout } from "node:timers/promises";
 
 import { githubRequest } from "./github.mjs";
+import { mergeBranch } from "./merge-branch.mjs";
 import { hasSameRepository } from "./pull-request.mjs";
 import { deliveryTarget } from "./stack-target.mjs";
 import { readStack } from "./stack.mjs";
@@ -8,7 +9,10 @@ import { setStatus } from "./state.mjs";
 
 const UPDATE_SECONDS = 30;
 
-export async function refreshStack(context, callGitHub = githubRequest) {
+export async function refreshStack(
+  context,
+  { callGitHub = githubRequest, merge = mergeBranch } = {}
+) {
   const pull = callGitHub({
     path: `repos/${context.repository}/pulls/${context.pullRequestNumber}`
   });
@@ -26,7 +30,7 @@ export async function refreshStack(context, callGitHub = githubRequest) {
     }
     await refreshOwnedLayer(
       { ...context, integration: stack.base.ref },
-      { layer, previous: layers[index - 1] },
+      { layer, merge, previous: layers[index - 1] },
       callGitHub
     );
   }
@@ -62,7 +66,7 @@ function refreshBase(context, { layer, previous, target }, callGitHub) {
   return path;
 }
 
-async function refreshLayer(context, { layer, previous }, callGitHub) {
+async function refreshLayer(context, { layer, merge, previous }, callGitHub) {
   const target = deliveryTarget(context, callGitHub);
   if (
     target.writer !== context.expectedWriter ||
@@ -75,15 +79,24 @@ async function refreshLayer(context, { layer, previous }, callGitHub) {
   if (containsBase(context, fresh, callGitHub)) {
     return;
   }
-  callGitHub({
-    body: { expected_head_sha: fresh.head.sha },
-    method: "PUT",
-    path: `${path}/update-branch`
+  const base = callGitHub({
+    path: `repos/${context.repository}/git/ref/heads/${fresh.base.ref}`
+  });
+  merge({
+    appLogin: context.appLogin,
+    base: base.object.sha,
+    branch: fresh.head.ref,
+    head: fresh.head.sha,
+    remote: `https://github.com/${context.repository}.git`
   });
   await waitForUpdate(context, { head: fresh.head.sha, path }, callGitHub);
 }
 
-async function refreshOwnedLayer(context, { layer, previous }, callGitHub) {
+async function refreshOwnedLayer(
+  context,
+  { layer, merge, previous },
+  callGitHub
+) {
   const issue = layer.head.ref.match(/^claude\/issue-([1-9]\d*)$/)?.[1];
   if (!issue) {
     throw new Error("A native stack contains an unknown implementation branch");
@@ -94,7 +107,7 @@ async function refreshOwnedLayer(context, { layer, previous }, callGitHub) {
     issueNumber: issue
   };
   try {
-    await refreshLayer(scope, { layer, previous }, callGitHub);
+    await refreshLayer(scope, { layer, merge, previous }, callGitHub);
   } catch (error) {
     setStatus(scope, "blocked", callGitHub);
     throw error;

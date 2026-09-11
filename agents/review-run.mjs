@@ -25,6 +25,7 @@ const file = (name) => path.join(environment.RUNNER_TEMP, name);
 const context = {
   appLogin: environment.BUILDER_LOGIN,
   attempt: environment.GITHUB_RUN_ATTEMPT,
+  ciWorkflow: resolveCiWorkflow(environment.AI_CI_WORKFLOW),
   defaultBranch: environment.DEFAULT_BRANCH,
   effort: environment.EFFORT,
   issueNumber: environment.ISSUE,
@@ -164,7 +165,6 @@ function reviewSource(event) {
 function stackSource(event) {
   const source = readStackReviewSource({
     ...context,
-    ciWorkflow: resolveCiWorkflow(environment.AI_CI_WORKFLOW),
     sourceRunId: String(event.workflow_run?.id)
   });
   if (!source || source.pull.number !== Number(context.pullRequestNumber)) {

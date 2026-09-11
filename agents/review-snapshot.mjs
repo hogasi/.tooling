@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
 
+import { isolatedGitEnvironment } from "./git-environment.mjs";
+
 // silviu: bound the tool-free pilot prompt; add scoped read-only retrieval before enrolling larger repositories.
 const MAX_INPUT_BYTES = 512 * 1024;
 
@@ -21,7 +23,11 @@ export function pullRequestSnapshot({ base, directory, head }) {
       "--no-renames",
       `${base}...${head}`
     ],
-    { encoding: "utf8", maxBuffer: MAX_INPUT_BYTES }
+    {
+      encoding: "utf8",
+      env: isolatedGitEnvironment(),
+      maxBuffer: MAX_INPUT_BYTES
+    }
   );
   const snapshot = {
     baseFiles: repositorySnapshot({ directory, sha: base }),
@@ -46,6 +52,7 @@ export function repositorySnapshot({
   }
   const git = (args) =>
     execFileSync("git", ["-C", directory, ...args], {
+      env: isolatedGitEnvironment(),
       maxBuffer: MAX_INPUT_BYTES
     });
   const entries = git(["ls-tree", "-rz", sha, "--", ...paths])
