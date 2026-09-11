@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { isolatedGitEnvironment } from "./git-environment.mjs";
 import {
   pullRequestSnapshot,
   repositorySnapshot,
@@ -17,6 +18,7 @@ test("snapshot reads only committed blobs and does not follow symlinks", (contex
   const git = (args) =>
     execFileSync("git", ["-C", directory, ...args], {
       encoding: "utf8",
+      env: isolatedGitEnvironment(),
       stdio: ["pipe", "pipe", "ignore"]
     });
   git(["init"]);
@@ -64,6 +66,7 @@ test("PR snapshot uses the three-dot diff and never runs configured diff drivers
   const git = (args) =>
     execFileSync("git", ["-C", directory, ...args], {
       encoding: "utf8",
+      env: isolatedGitEnvironment(),
       stdio: ["pipe", "pipe", "ignore"]
     });
   git(["init"]);

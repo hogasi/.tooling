@@ -276,11 +276,17 @@ Child implementations still need their own reviewed proposals and owner labels.
 combined CI readiness and final closing references. `agents/stack-target.mjs`
 resolves approved parent or prerequisite bases. `agents/stack.mjs` registers
 native stacks; `agents/stack-refresh.mjs` refreshes downstream layers with
-current-head checks. `agents/stack-review.mjs` authenticates CI handoffs so
-privileged review continues to run from the default branch. One parent-family
-writer serializes branch mutations; the parent PR is excluded from child stacks.
-These changes still require the live parent and stack rollout tests before
-claiming deployment complete.
+current-head checks. GitHub rejects its PR `update-branch` endpoint for native
+stack members. `agents/merge-branch.mjs` instead merges objects in a temporary
+bare repository and uses a normal push; conflicts and concurrent branch edits
+stop the refresh without rewriting existing commits or running consumer code.
+The reviewer carries the enrolled CI workflow through dependency checks so a
+verified child merge can satisfy the next layer's prerequisite.
+`agents/stack-review.mjs` authenticates CI handoffs so privileged review
+continues to run from the default branch. One parent-family writer serializes
+branch mutations; the parent PR is excluded from child stacks. These changes
+still require the live parent and stack rollout tests before claiming deployment
+complete.
 
 ### Parent integration rollout evidence
 

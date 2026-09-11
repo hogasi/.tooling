@@ -8,6 +8,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { appendDeliveryPlan } from "./delivery-plan.mjs";
+import { isolatedGitEnvironment } from "./git-environment.mjs";
 
 const runner = fileURLToPath(new URL("review-run.mjs", import.meta.url));
 const fakeGitHub = `#!/usr/bin/env node
@@ -52,6 +53,7 @@ function fixture(context, mode) {
   const git = (args) =>
     execFileSync("git", ["-C", directory, ...args], {
       encoding: "utf8",
+      env: isolatedGitEnvironment(),
       stdio: ["pipe", "pipe", "ignore"]
     }).trim();
   git(["init"]);
@@ -125,7 +127,7 @@ function fixture(context, mode) {
   );
   writeFileSync(path.join(directory, "gh"), fakeGitHub, { mode: 0o700 });
   const env = {
-    ...process.env,
+    ...isolatedGitEnvironment(),
     BUILDER_LOGIN: "hogasi-ai[bot]",
     DEFAULT_BRANCH: "main",
     EFFORT: "medium",
@@ -147,7 +149,8 @@ function fixture(context, mode) {
     REVIEWER_LOGIN: "hogasi-review[bot]",
     RUNNER_TEMP: directory,
     TOOLING_SHA: execFileSync("git", ["rev-parse", "HEAD"], {
-      encoding: "utf8"
+      encoding: "utf8",
+      env: isolatedGitEnvironment()
     }).trim()
   };
   const run = (command) =>
@@ -156,7 +159,7 @@ function fixture(context, mode) {
       stdio: ["pipe", "pipe", "pipe"]
     });
   const read = () => JSON.parse(readFileSync(stateFile, "utf8"));
-  return { directory, head, read, run, stateFile };
+  return { directory, env, head, read, run, stateFile };
 }
 for (const mode of ["plan", "pr"]) {
   test(`the actual ${mode} runner prepares and publishes through GitHub transport`, (context) => {
@@ -252,4 +255,10 @@ test("plan review receives off-main PR code and the pinned parent workflow imple
   );
   assert.throws(() => run("publish"), /Referenced PR changed/);
   assert.equal(read().writes.length, writes);
+});
+
+test("the reviewer rejects an invalid enrolled CI workflow before preparing input", (context) => {
+  const { env, run } = fixture(context, "pr");
+  env.AI_CI_WORKFLOW = "not-a-workflow";
+  assert.throws(() => run("prepare"), /Invalid enrolled CI workflow path/);
 });

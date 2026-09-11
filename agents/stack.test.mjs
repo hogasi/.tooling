@@ -71,16 +71,18 @@ test("downstream refresh uses the exact current head and waits for merged base e
     if (options.path.includes("/compare/")) {
       return { status: options.path.endsWith(head) ? "diverged" : "ahead" };
     }
-    if (options.path.endsWith("/update-branch")) {
-      updates.push(options);
-      state.upper.head.sha = "d".repeat(40);
-      return { message: "Updating pull request branch." };
-    }
     return state.request(options);
   };
-  await refreshStack(childContext, request);
+  await refreshStack(childContext, {
+    callGitHub: request,
+    merge: (options) => {
+      updates.push(options);
+      state.upper.head.sha = "d".repeat(40);
+    }
+  });
   assert.equal(updates.length, 1);
-  assert.deepEqual(updates[0].body, { expected_head_sha: head });
+  assert.equal(updates[0].head, head);
+  assert.equal(updates[0].base, state.pull.head.sha);
 });
 
 test("downstream refresh uses the live prerequisite when GitHub caches an older base SHA", async () => {
@@ -97,16 +99,18 @@ test("downstream refresh uses the live prerequisite when GitHub caches an older 
           : "ahead"
       };
     }
-    if (options.path.endsWith("/update-branch")) {
-      updates.push(options);
-      state.upper.head.sha = "d".repeat(40);
-      return {};
-    }
     return state.request(options);
   };
-  await refreshStack(childContext, request);
+  await refreshStack(childContext, {
+    callGitHub: request,
+    merge: (options) => {
+      updates.push(options);
+      state.upper.head.sha = "d".repeat(40);
+    }
+  });
   assert.equal(updates.length, 1);
-  assert.deepEqual(updates[0].body, { expected_head_sha: initialHead });
+  assert.equal(updates[0].head, initialHead);
+  assert.equal(updates[0].base, state.pull.head.sha);
 });
 
 test("a concurrent stack head edit stops refresh without overwriting the new commit", async () => {
@@ -127,7 +131,10 @@ test("a concurrent stack head edit stops refresh without overwriting the new com
     return state.request(options);
   };
   await assert.rejects(
-    refreshStack(childContext, request),
+    refreshStack(childContext, {
+      callGitHub: request,
+      merge: () => assert.fail("must not merge")
+    }),
     /Concurrent PR changes/
   );
   assert.equal(state.pull.head.sha, "f".repeat(40));
@@ -148,14 +155,19 @@ test("a branch conflict blocks the affected child and never force-pushes", async
     if (options.path.includes("/compare/")) {
       return { status: "diverged" };
     }
-    if (options.path.endsWith("/update-branch")) {
-      throw new Error("GitHub 422: merge conflict");
-    }
     return state.request(options);
   };
-  await assert.rejects(refreshStack(childContext, request), /merge conflict/);
+  await assert.rejects(
+    refreshStack(childContext, {
+      callGitHub: request,
+      merge: () => {
+        throw new Error("merge conflict");
+      }
+    }),
+    /merge conflict/
+  );
   assert.ok(writes.some((entry) => entry.body?.labels?.includes("blocked")));
-  assert.equal(writes.filter((entry) => entry.method === "PUT").length, 1);
+  assert.equal(writes.filter((entry) => entry.method === "PUT").length, 0);
   assert.equal(
     writes.some((entry) => entry.path.includes("/git/refs")),
     false
