@@ -33,8 +33,11 @@ export async function refreshStack(context, callGitHub = githubRequest) {
 }
 
 function containsBase(context, pull, callGitHub) {
+  const base = callGitHub({
+    path: `repos/${context.repository}/git/ref/heads/${pull.base.ref}`
+  });
   const comparison = callGitHub({
-    path: `repos/${context.repository}/compare/${pull.base.sha}...${pull.head.sha}`
+    path: `repos/${context.repository}/compare/${base.object.sha}...${pull.head.sha}`
   });
   return ["ahead", "identical"].includes(comparison.status);
 }

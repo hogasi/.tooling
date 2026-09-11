@@ -39,6 +39,7 @@
           "agents/parent-integration.mjs",
           "agents/parent-integration.test.mjs",
           "agents/stack.mjs",
+          "agents/stack.test.mjs",
           "agents/stack-refresh.mjs",
           "agents/stack-review.mjs",
           "agents/stack-target.mjs"

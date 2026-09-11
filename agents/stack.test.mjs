@@ -21,6 +21,15 @@ function nativeFixture() {
   };
   const writes = [];
   const request = (options) => {
+    if (options.path.includes("/git/ref/heads/")) {
+      const refs = new Map([
+        [state.pull.base.ref, state.pull.base.sha],
+        [state.pull.head.ref, state.pull.head.sha]
+      ]);
+      return {
+        object: { sha: refs.get(options.path.split("/git/ref/heads/", 2)[1]) }
+      };
+    }
     if (options.method === "POST" && options.path.endsWith("/stacks")) {
       writes.push(options);
       state.pull.stack = { base: { ref: "claude/issue-1" }, number: 1 };
@@ -72,6 +81,32 @@ test("downstream refresh uses the exact current head and waits for merged base e
   await refreshStack(childContext, request);
   assert.equal(updates.length, 1);
   assert.deepEqual(updates[0].body, { expected_head_sha: head });
+});
+
+test("downstream refresh uses the live prerequisite when GitHub caches an older base SHA", async () => {
+  const state = nativeFixture();
+  registerStack(childContext, state.request);
+  state.pull.head.sha = "e".repeat(40);
+  const initialHead = state.upper.head.sha;
+  const updates = [];
+  const request = (options) => {
+    if (options.path.includes("/compare/")) {
+      return {
+        status: options.path.endsWith(`${state.pull.head.sha}...${initialHead}`)
+          ? "diverged"
+          : "ahead"
+      };
+    }
+    if (options.path.endsWith("/update-branch")) {
+      updates.push(options);
+      state.upper.head.sha = "d".repeat(40);
+      return {};
+    }
+    return state.request(options);
+  };
+  await refreshStack(childContext, request);
+  assert.equal(updates.length, 1);
+  assert.deepEqual(updates[0].body, { expected_head_sha: initialHead });
 });
 
 test("a concurrent stack head edit stops refresh without overwriting the new commit", async () => {
