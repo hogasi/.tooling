@@ -5,6 +5,7 @@ import { readDeliveryPlan } from "./delivery-plan.mjs";
 import { readInheritance } from "./delivery-scope.mjs";
 import { githubRequest, readActionsPages, readPages } from "./github.mjs";
 import { integrationIssue } from "./parent-integration.mjs";
+import { readPullEvidence } from "./pr-evidence.mjs";
 import { pullRequestIssue } from "./pull-request.mjs";
 import { validateVerdict } from "./review.mjs";
 import { deliveryTarget } from "./stack-target.mjs";
@@ -28,16 +29,14 @@ export function beginPullRequestReview(context, callGitHub = githubRequest) {
   }
   const { digest, issue, proposal } = readApprovedProposal(context, callGitHub);
   const inherited = readInheritance(context, issue, callGitHub);
-  const snapshot = reviewSnapshot(context, { digest, pullRequest });
+  const evidence = readPullEvidence(context, pullRequest, callGitHub);
+  const snapshot = reviewSnapshot(context, { digest, evidence, pullRequest });
   const reviews = readReviews(context, callGitHub);
   if (hasPublishedReview(context, { reviews, snapshot })) {
     return null;
   }
   const ci = readWorkflowRuns(context, callGitHub, snapshot.head);
-  const comments = readPages(
-    `repos/${context.repository}/issues/${context.pullRequestNumber}/comments`,
-    callGitHub
-  );
+  const { comments } = evidence;
   return { ci, comments, inherited, proposal, pullRequest, reviews, snapshot };
 }
 
@@ -49,7 +48,8 @@ export function publishPullRequestReview(context, callGitHub = githubRequest) {
   const verdict = validateVerdict(context.verdict);
   const pullRequest = readPullRequest(context, callGitHub);
   const { digest } = readApprovedProposal(context, callGitHub);
-  const current = reviewSnapshot(context, { digest, pullRequest });
+  const evidence = readPullEvidence(context, pullRequest, callGitHub);
+  const current = reviewSnapshot(context, { digest, evidence, pullRequest });
   if (current.key !== context.snapshot.key) {
     throw new Error("PR or approved proposal changed during review");
   }
@@ -150,12 +150,13 @@ function reviewBody(context, verdict) {
   }
   return body;
 }
-function reviewSnapshot(context, { digest, pullRequest }) {
+function reviewSnapshot(context, { digest, evidence, pullRequest }) {
   const input = {
     base: pullRequest.base.sha,
     baseRef: pullRequest.base.ref,
     digest,
     effort: context.effort,
+    evidence: evidence.fingerprint,
     head: pullRequest.head.sha,
     model: context.model
   };

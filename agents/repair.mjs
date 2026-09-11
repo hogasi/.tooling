@@ -2,6 +2,7 @@ import { readApprovedProposal } from "./approval.mjs";
 import { claimCorrection, resetCorrections } from "./automation.mjs";
 import { githubRequest, readActionsPages } from "./github.mjs";
 import { integrationIssue } from "./parent-integration.mjs";
+import { readPullEvidence } from "./pr-evidence.mjs";
 import { pullRequestIssue } from "./pull-request.mjs";
 import { readRepairCi, readRepairVerdict } from "./repair-evidence.mjs";
 import { deliveryTarget } from "./stack-target.mjs";
@@ -21,7 +22,12 @@ export function claimRepair(context, callGitHub = githubRequest) {
   // CI and review events for the same input share a claim under the issue writer lock.
   return claimCorrection(
     { ...context, issueNumber: evidence.issue, phase: "implementer" },
-    { base: evidence.base, digest: evidence.digest, head: evidence.head },
+    {
+      base: evidence.base,
+      digest: evidence.digest,
+      evidence: evidence.fingerprint,
+      head: evidence.head
+    },
     callGitHub
   );
 }
@@ -68,6 +74,7 @@ function approvedEvidence(context, { issue, pull }, callGitHub) {
   return {
     base: pull.base.sha,
     digest: approved.digest,
+    fingerprint: readPullEvidence(context, pull, callGitHub).fingerprint,
     head: pull.head.sha,
     issue,
     operation,

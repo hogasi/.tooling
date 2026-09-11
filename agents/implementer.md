@@ -90,6 +90,10 @@ scope. Keep the parent draft; trusted tooling marks it ready after every child
 is integrated and combined CI passes. Do not recreate children or implement
 unfinished child scope on the parent branch.
 
+Put verification evidence in PR comments. The tracker regenerates the parent
+body and removes appended text. Do not create commits solely to trigger another
+review; changed verification evidence can be reviewed on the existing head.
+
 ## Repairs
 
 A repair is a scoped follow-up, not a new round of implementation. Automatic

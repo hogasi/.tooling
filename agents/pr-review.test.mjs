@@ -6,6 +6,7 @@ import {
   beginPullRequestReview,
   publishPullRequestReview
 } from "./pr-review.mjs";
+import { readRepairVerdict } from "./repair-evidence.mjs";
 
 const sha = (character) => character.repeat(40);
 const issue = {
@@ -109,6 +110,68 @@ function fixture(overrides = {}) {
   return { callGitHub, reads, writes };
 }
 const start = () => beginPullRequestReview(context, fixture().callGitHub);
+test("new delivery evidence permits review of unchanged code", () => {
+  const first = fixture();
+  const review = beginPullRequestReview(context, first.callGitHub);
+  publishPullRequestReview(
+    { ...context, ...review, verdict: pass },
+    first.callGitHub
+  );
+  const published = {
+    body: first.writes[0].body.body,
+    commit_id: sha("b"),
+    state: "COMMENTED",
+    user: { login: context.reviewerLogin }
+  };
+  const next = fixture({ reviews: [published] });
+  next.reads.set("repos/hogasi/sandbox/issues/10/comments", [
+    [
+      {
+        body: "Verified child authorization and CI.",
+        id: 100,
+        user: { login: "owner" }
+      }
+    ]
+  ]);
+  const revised = beginPullRequestReview(context, next.callGitHub);
+  assert.ok(revised);
+  assert.equal(revised.snapshot.head, review.snapshot.head);
+  assert.notEqual(revised.snapshot.key, review.snapshot.key);
+});
+
+test("evidence edited during review prevents publishing a stale verdict", () => {
+  const state = fixture();
+  const review = beginPullRequestReview(context, state.callGitHub);
+  state.reads.set("repos/hogasi/sandbox/issues/10/comments", [
+    [{ body: "The earlier verification was incorrect.", id: 100 }]
+  ]);
+  assert.throws(
+    () =>
+      publishPullRequestReview(
+        { ...context, ...review, verdict: pass },
+        state.callGitHub
+      ),
+    /changed/
+  );
+  assert.equal(state.writes.length, 0);
+});
+
+test("a changed PR description invalidates the in-flight verdict", () => {
+  const review = start();
+  const state = fixture({
+    pullRequest: { ...pullRequest, body: "Revised verification details" }
+  });
+  assert.throws(
+    () =>
+      publishPullRequestReview(
+        { ...context, ...review, verdict: pass },
+        state.callGitHub
+      ),
+    /changed/
+  );
+  assert.equal(state.writes.length, 0);
+});
+
 test("captures the approved proposal and CI for the exact head", () => {
   const review = start();
   assert.equal(review.snapshot.head, sha("b"));
@@ -116,6 +179,40 @@ test("captures the approved proposal and CI for the exact head", () => {
   assert.equal(review.snapshot.digest, digest);
   assert.equal(review.ci[0].conclusion, "success");
   assert.equal(review.proposal.body, issue.body);
+});
+
+test("changed evidence invalidates an open review but preserves a completed integration", () => {
+  const first = fixture();
+  publishPullRequestReview(
+    { ...context, ...start(), verdict: pass },
+    first.callGitHub
+  );
+  const state = fixture({
+    reviews: [
+      {
+        body: first.writes[0].body.body,
+        commit_id: sha("b"),
+        id: 100,
+        state: "COMMENTED",
+        user: { login: context.reviewerLogin }
+      }
+    ]
+  });
+  const evidence = { approved: { digest }, pull: pullRequest };
+  assert.equal(readRepairVerdict(context, evidence, state.callGitHub), "pass");
+  state.reads.set("repos/hogasi/sandbox/issues/10/comments", [
+    [{ body: "New verification evidence", id: 100 }]
+  ]);
+  assert.equal(readRepairVerdict(context, evidence, state.callGitHub), null);
+  const merged = {
+    ...pullRequest,
+    merged_at: "2026-09-11T07:00:00Z",
+    state: "closed"
+  };
+  assert.equal(
+    readRepairVerdict(context, { ...evidence, pull: merged }, state.callGitHub),
+    "pass"
+  );
 });
 test("publishes a COMMENT review tied to the head, never a merge approval", () => {
   const review = start();

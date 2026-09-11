@@ -6,6 +6,7 @@ import { context, stackFixture } from "./delivery-fixture.mjs";
 import { refreshDelivery } from "./delivery-progress.mjs";
 import {
   createParentBranch,
+  draftParentRepair,
   finalizeParentPull,
   parentDeliveries,
   updateParentPull
@@ -215,10 +216,17 @@ test("parent readiness requires its own latest combined CI, not a child run at t
   finalizeParentPull(context, request);
   assert.equal(state.parent.pull.draft, false);
   assert.equal(mutations.length, 1);
+  const head = state.parent.pull.head.sha;
+  draftParentRepair(context, { callGitHub: request, pull: state.parent.pull });
+  assert.equal(state.parent.pull.draft, true);
+  finalizeParentPull(context, request);
+  assert.equal(state.parent.pull.draft, false);
+  assert.equal(state.parent.pull.head.sha, head);
+  assert.equal(mutations.length, 3);
   runs.push({ ...runs[1], conclusion: "failure", id: 103 });
   finalizeParentPull(context, request);
   assert.equal(state.parent.pull.draft, true);
-  assert.equal(mutations.length, 2);
+  assert.equal(mutations.length, 4);
 });
 
 test("combined CI can repair a draft parent only after all children integrate", () => {
@@ -242,6 +250,9 @@ test("combined CI can repair a draft parent only after all children integrate", 
     sourceRunId: "99"
   };
   const request = (options) => {
+    if (options.path.endsWith("/issues/9/comments")) {
+      return [[]];
+    }
     if (options.path.endsWith("/actions/runs/99")) {
       return run;
     }

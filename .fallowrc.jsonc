@@ -102,6 +102,7 @@
         ],
         "functions": [
           "reviewVerdict",
+          "readRepairVerdict",
           "isMergedCi",
           "requireContext",
           "correctionOperation",
@@ -115,7 +116,7 @@
           "implementationDecision"
         ],
         "maxCrap": 73,
-        "reason": "Estimated CRAP does not measure node:test coverage. Repair tests exercise authenticated source jobs, stale and foreign inputs, drafts, revoked scope, duplicate claims, CI supersession and verified cycle completion. CLI routing tests cover disabled and forged events. Other complexity limits remain unchanged."
+        "reason": "Estimated CRAP does not measure node:test coverage. Repair tests exercise authenticated source jobs, stale and foreign inputs, changed PR evidence, historical merged reviews, drafts, revoked scope, duplicate claims, CI supersession and verified cycle completion. CLI routing tests cover disabled and forged events. Other complexity limits remain unchanged."
       },
       {
         "files": ["agents/planning.mjs"],
