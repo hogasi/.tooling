@@ -290,39 +290,58 @@ complete.
 
 ### Parent integration rollout evidence
 
-The sandbox caller pins tooling `04317e095eb366a3babf196308129098dee65f35` after
-[sandbox PR #37](https://github.com/hogasi/ai-sandbox/pull/37). All 343 tooling
-tests and required CI checks passed. Live checks on September 10, 2026
-established:
+The sandbox caller pins `aa21cf66ec4e55569589e35bec35a20471064e5c` after
+[sandbox PR #46](https://github.com/hogasi/ai-sandbox/pull/46). All 355 tooling
+tests and required checks passed.
 
-- [Parent #31](https://github.com/hogasi/ai-sandbox/issues/31) passed planning
-  review and authorization.
-  [Run 34526494746](https://github.com/hogasi/ai-sandbox/actions/runs/34526494746)
-  created `claude/issue-31` and children #34/#35, with #35 natively blocked by
-  #34. Captured parent and child bodies remain byte-identical.
-- Initial parent CI exposed missing router `contents: read` permission.
-  [Tooling PR #26](https://github.com/hogasi/.tooling/pull/26) fixed it;
-  [replay 34527544879](https://github.com/hogasi/ai-sandbox/actions/runs/34527544879)
-  passed routing and delivery tracking.
-- The migration plan for
-  [parent #25](https://github.com/hogasi/ai-sandbox/issues/25) passed
-  [review 34528074599](https://github.com/hogasi/ai-sandbox/actions/runs/34528074599)
-  using both existing child PR snapshots and the complete pinned runtime source.
-  The same checkpoint passed after the missing evidence was supplied; it did not
-  need another proposal revision.
-- [Authorization run 34528257887](https://github.com/hogasi/ai-sandbox/actions/runs/34528257887)
-  created `claude/issue-25`, reused children #26/#27 without changing their
-  bodies, and dispatched fresh inherited discovery. Existing PRs #28/#29 remain
-  unmerged pending that child authorization.
-- Child #35 passed review after automatic correction of its prerequisite
-  comparison. Claude runs for #34 and #26 subsequently failed before model usage
-  with `is_error: true` and no structured output. The action did not expose the
-  underlying error or retain a diagnostic artifact, so an account limit or
-  authentication cause is not confirmed. No partial plan was published.
+Claude execution recovered during the September 11, 2026 sandbox tests. Fresh
+owner-authorized discovery produced reviewed child checkpoints; Opus then
+implemented and repaired the child PRs. The earlier zero-usage failures did not
+establish an account-limit or authentication cause.
 
-Still unverified live: child retargeting and integration into the parent, first
-integration opening the draft parent PR, combined parent CI/readiness/review,
-native stack repair and downstream refresh, and final parent merge closing its
-children. Resume child discovery after Claude execution recovers; each child
-still needs its own reviewed checkpoint and owner authorization. Do not merge
-the old main-targeting child PRs as a workaround.
+- Existing child PRs [#29](https://github.com/hogasi/ai-sandbox/pull/29) and
+  [#28](https://github.com/hogasi/ai-sandbox/pull/28) were retargeted and merged
+  into `claude/issue-25`. The first verified integration opened
+  [parent draft #43](https://github.com/hogasi/ai-sandbox/pull/43) while its
+  sibling remained pending. Both children are now integrated; combined local
+  checks passed 20 tests and parent CI passed. Child issues remain open until
+  the parent release reaches main.
+- Native stack [#40](https://github.com/hogasi/ai-sandbox/pull/38) contained PRs
+  #38 and #39 inside `claude/issue-31`. Merging #38 through GitHub's
+  asynchronous merge API opened
+  [parent draft #44](https://github.com/hogasi/ai-sandbox/pull/44) and
+  automatically retargeted #39 to the parent branch. The parent PR is not a
+  stack layer. PR #39 subsequently merged into the parent through the same
+  asynchronous API; both child issues stayed open.
+- An upstream README repair exposed a downstream conflict. Refresh stopped and
+  marked the child blocked. Owner-authorized Opus repair resolved it without
+  rewriting commits. After enrollment of
+  [tooling #31](https://github.com/hogasi/.tooling/pull/31), automatic
+  [refresh 34569917544](https://github.com/hogasi/ai-sandbox/actions/runs/34569917544)
+  merged the current parent base successfully. Independent ancestry checks
+  preserved the prior child and prerequisite histories; the child diff contained
+  exactly its four approved files. Local checks passed 22 tests,
+  [PR CI passed](https://github.com/hogasi/ai-sandbox/actions/runs/34570016070),
+  and
+  [Astra approved the refreshed input](https://github.com/hogasi/ai-sandbox/actions/runs/34570049167).
+- Astra's earlier missing-evidence finding automatically dispatched Opus. The
+  correction supplied authorization timing and issue-history records. Operator
+  comparisons confirmed all six issue descriptions were byte-identical to their
+  original captures, and GitHub reported zero content edits. Both stacked PRs
+  retained their immutable initial `Base:` and `Head:` records.
+
+Live tests also exposed and fixed merged-CI association loss
+([tooling #29](https://github.com/hogasi/.tooling/pull/29)), cached PR base SHAs
+([#30](https://github.com/hogasi/.tooling/pull/30)), the native-stack
+`update-branch` limitation and missing reviewer CI context
+([#31](https://github.com/hogasi/.tooling/pull/31)), and stale blocked labels
+after successful refresh ([#32](https://github.com/hogasi/.tooling/pull/32)).
+The legacy migration PR needed a close/reopen to obtain fresh PR-associated CI
+because its old head workflow did not subscribe to retarget/readiness events.
+
+Automatic parent readiness remains blocked: GitHub rejected the tracker's
+`markPullRequestReadyForReview` mutation because its minted token has
+`contents: read`. The prepared `contents: write` change requires specific owner
+approval after automatic approval review rejected its commit. Both parent PRs
+remain drafts. Final parent readiness, independent combined review, owner merge,
+and automatic closure of descendants are not yet verified live.
