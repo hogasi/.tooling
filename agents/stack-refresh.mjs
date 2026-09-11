@@ -108,6 +108,7 @@ async function refreshOwnedLayer(
   };
   try {
     await refreshLayer(scope, { layer, merge, previous }, callGitHub);
+    setStatus(scope, "in development", callGitHub);
   } catch (error) {
     setStatus(scope, "blocked", callGitHub);
     throw error;

@@ -173,3 +173,32 @@ test("a branch conflict blocks the affected child and never force-pushes", async
     false
   );
 });
+
+test("a verified refresh clears the child's stale blocked status", async () => {
+  const state = nativeFixture();
+  registerStack(childContext, state.request);
+  let labels = [{ name: "ready for dev" }, { name: "blocked" }];
+  const request = (options) => {
+    const path = "repos/org/repo/issues/3/labels";
+    if (options.path === path && !options.method) {
+      return labels;
+    }
+    if (options.path === `${path}/blocked` && options.method === "DELETE") {
+      labels = labels.filter((label) => label.name !== "blocked");
+      return {};
+    }
+    if (options.path === path && options.method === "POST") {
+      labels = [...labels, ...options.body.labels.map((name) => ({ name }))];
+      return {};
+    }
+    if (options.path.includes("/compare/")) {
+      return { status: "ahead" };
+    }
+    return state.request(options);
+  };
+  await refreshStack(childContext, { callGitHub: request });
+  assert.deepEqual(
+    labels.map((label) => label.name),
+    ["ready for dev", "in development"]
+  );
+});
