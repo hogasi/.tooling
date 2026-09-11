@@ -817,6 +817,18 @@ jobs:
           EXPECTED_WRITER: ${{ needs.route.outputs.writer }}
         run: node "${RUNNER_TEMP}/tooling/agents/stack-run.mjs" finish
 
+      - name: Recheck repaired parent readiness
+        if: success() && steps.delivery.outputs.parent == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
+          ISSUE: ${{ needs.route.outputs.issue }}
+          AI_CI_WORKFLOW: ${{ vars.AI_CI_WORKFLOW }}
+          REVIEWER_LOGIN:
+            ${{ vars.AI_REVIEW_APP_LOGIN || 'hogasi-review[bot]' }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: node "${RUNNER_TEMP}/tooling/agents/delivery-run.mjs" progress
+
       - name: Replace the reaction with the outcome
         if: always() && steps.reaction.outputs.target != ''
         env:

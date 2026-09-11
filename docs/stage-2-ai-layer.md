@@ -129,9 +129,14 @@ The complete prompt is limited to 512 KiB. Submodules fail visibly; binary
 contents are unavailable. Larger repos need scoped retrieval before enrollment.
 The runner rechecks proposal and code revisions before publishing COMMENT
 feedback tied to the head, not merge approval. Matching
-base/head/proposal/model/ effort inputs suppress duplicate model calls.
-Pending/missing CI is not a pass. Child CI completion can request review;
-repeated input is deduplicated.
+base/head/proposal/model/effort and PR evidence inputs suppress duplicate model
+calls. PR body and comment evidence is fingerprinted and rechecked before
+publication; evidence-only repairs can receive a fresh verdict without dummy
+commits. Open repair decisions reject stale evidence, while merged reviews
+remain historical integration records. Parent repairs enter draft before the
+model runs; successful completion rechecks child integration and current CI
+before restoring readiness and triggering review. Pending/missing CI is not a
+pass. Child CI completion can request review; repeated input is deduplicated.
 
 Plan, PR and smoke modes share one `codex-subscription` queue per consumer.
 Persist the subscription login after model execution, including model failures,
@@ -290,8 +295,8 @@ complete.
 
 ### Parent integration rollout evidence
 
-The sandbox caller pins `aa21cf66ec4e55569589e35bec35a20471064e5c` after
-[sandbox PR #46](https://github.com/hogasi/ai-sandbox/pull/46). All 355 tooling
+The sandbox caller pins `4ab7ebdb8c977a41195a0fc2a9e447d9e045d97a` after
+[sandbox PR #47](https://github.com/hogasi/ai-sandbox/pull/47). All 356 tooling
 tests and required checks passed.
 
 Claude execution recovered during the September 11, 2026 sandbox tests. Fresh
@@ -339,9 +344,9 @@ after successful refresh ([#32](https://github.com/hogasi/.tooling/pull/32)).
 The legacy migration PR needed a close/reopen to obtain fresh PR-associated CI
 because its old head workflow did not subscribe to retarget/readiness events.
 
-Automatic parent readiness remains blocked: GitHub rejected the tracker's
-`markPullRequestReadyForReview` mutation because its minted token has
-`contents: read`. The prepared `contents: write` change requires specific owner
-approval after automatic approval review rejected its commit. Both parent PRs
-remain drafts. Final parent readiness, independent combined review, owner merge,
-and automatic closure of descendants are not yet verified live.
+Automatic parent readiness passed after
+[tooling #34](https://github.com/hogasi/.tooling/pull/34) granted the explicitly
+approved `contents: write` permission to the pinned-tooling tracker. GitHub's
+timelines show `hogasi-ai[bot]` marking both completed parents ready after their
+combined CI passed. Parent reviews and final release verification are in
+progress.

@@ -39,6 +39,15 @@ export function deliveryRows(deliveries) {
   );
 }
 
+export function draftParentRepair(
+  context,
+  { callGitHub = githubRequest, pull }
+) {
+  if (!pull.draft) {
+    changeParentReadiness(context, { pull, ready: false }, callGitHub);
+  }
+}
+
 export function finalizeParentPull(context, callGitHub = githubRequest) {
   const pull = updateParentPull(context, callGitHub);
   if (!pull) {

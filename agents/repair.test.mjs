@@ -78,6 +78,7 @@ function fixture() {
       [[{ event: "labeled", id: 20, label: { name: "ready for dev" } }]]
     ],
     ["repos/org/repo/issues/1/labels", issue.labels],
+    ["repos/org/repo/issues/2/comments", [[]]],
     ["repos/org/repo/pulls/2", pull],
     ["repos/org/repo/pulls/2/reviews", [reviews]]
   ]);
@@ -103,7 +104,18 @@ function fixture() {
     }
     return {};
   };
-  return { ci, comments, issue, jobs, pull, request, reviews, run, writes };
+  return {
+    ci,
+    comments,
+    issue,
+    jobs,
+    pull,
+    reads,
+    request,
+    reviews,
+    run,
+    writes
+  };
 }
 const reviewContext = {
   ...context,
@@ -117,6 +129,22 @@ function reviewFixture() {
   state.run.event = "pull_request_target";
   return state;
 }
+test("new verification evidence has a separate bounded repair claim", () => {
+  const state = fixture();
+  const scope = { ...context, expectedHead: head };
+  assert.equal(claimRepair(scope, state.request).count, 1);
+  assert.equal(claimRepair(scope, state.request), null);
+  state.reads.set("repos/org/repo/issues/2/comments", [
+    [
+      {
+        body: "Additional verification evidence",
+        id: 100,
+        user: { login: "owner" }
+      }
+    ]
+  ]);
+  assert.equal(claimRepair(scope, state.request).count, 2);
+});
 test("only a current failed enrolled CI run routes the authorized owner and issue", () => {
   const state = fixture();
   const decision = resolveRepair(context, state.request);

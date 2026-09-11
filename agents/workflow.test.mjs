@@ -269,6 +269,16 @@ test("parent tracking can change readiness using only the pinned tooling", () =>
   assert.doesNotMatch(tracker, /claude-code-action|pnpm install|npm install/);
 });
 
+test("parent repair readiness is rechecked only after successful implementation", () => {
+  const implement = job("implement");
+  assert.match(
+    implement,
+    /Recheck repaired parent readiness\n\s+if: success\(\) && steps\.delivery\.outputs\.parent == 'true'/
+  );
+  assert.match(implement, /delivery-run\.mjs" progress/);
+  assert.doesNotMatch(job("plan"), /Recheck repaired parent readiness/);
+});
+
 test("routing knows the App's own login so the planner can ask for review", () => {
   const route = job("route");
 

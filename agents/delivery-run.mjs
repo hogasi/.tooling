@@ -5,6 +5,7 @@ import { claimChildDiscovery, createChildren } from "./delivery.mjs";
 import { githubRequest } from "./github.mjs";
 import {
   createParentBranch,
+  draftParentRepair,
   finalizeParentPull,
   integrationIssue
 } from "./parent-integration.mjs";
@@ -43,6 +44,8 @@ switch (process.argv[2]) {
       });
       if (integrationIssue(context, pull) === context.issueNumber) {
         prepareLeaf();
+        draftParentRepair(context, { pull });
+        output("parent=true");
         output("leaf=true");
         break;
       }

@@ -1,4 +1,5 @@
 import { readActionsPages, readPages } from "./github.mjs";
+import { readPullEvidence } from "./pr-evidence.mjs";
 import { hasSameRepository } from "./pull-request.mjs";
 
 const RESULT_MARKER = "<!-- hogasi-review result ";
@@ -42,7 +43,18 @@ export function readRepairVerdict(context, { approved, pull }, callGitHub) {
         entry.commit_id === pull.head.sha
     )
     .toSorted((left, right) => right.id - left.id)[0];
-  return reviewVerdict(context, { approved, pull, review });
+  const verdict = reviewVerdict(context, { approved, pull, review });
+  const record = readResult(review);
+  // A merged review is historical evidence; later discussion does not undo its integration.
+  if (
+    verdict &&
+    record.evidence &&
+    pull.state === "open" &&
+    record.evidence !== readPullEvidence(context, pull, callGitHub).fingerprint
+  ) {
+    return null;
+  }
+  return verdict;
 }
 
 export function resolveCiWorkflow(raw) {
